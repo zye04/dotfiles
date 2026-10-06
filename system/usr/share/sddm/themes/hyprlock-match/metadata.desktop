@@ -1,0 +1,8 @@
+[SddmGreeterTheme]
+Name=hyprlock-match
+Description=Login screen styled after the hyprlock lock screen
+Type=sddm-theme
+Version=1.0
+MainScript=Main.qml
+ConfigFile=generated/theme.conf
+QtVersion=6

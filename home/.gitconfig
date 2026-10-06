@@ -1,0 +1,17 @@
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
+[user]
+	name = zye04
+	email = 260991856+zye04@users.noreply.github.com
+[init]
+	defaultBranch = main
+[core]
+	pager = less -FX
+	editor = code --wait
+[color]
+	ui = auto
+[help]
+	autocorrect = prompt

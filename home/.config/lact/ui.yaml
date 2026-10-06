@@ -1,0 +1,9 @@
+selected_tab: oc_page
+selected_gpu: 10DE:2704-1462:5111-0000:06:00.0
+stats_poll_interval_ms: 500
+gpus: {}
+theme: automatic
+color_scheme: Auto
+window_size:
+  width: 2548
+  height: 1388

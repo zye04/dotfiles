@@ -1,0 +1,6 @@
+[Unit]
+Description=Watch desktop theme colors for keyboard RGB
+
+[Path]
+PathChanged=%h/.local/state/quickshell/user/generated/colors.json
+Unit=openrgb-theme.service

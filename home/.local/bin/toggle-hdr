@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""Toggle the configured AOC display, preserving its other monitor settings."""
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import time
+
+
+def notify(message):
+    subprocess.run(["notify-send", "HDR", message], check=False)
+
+
+def main():
+    config = Path.home() / ".config/hypr/monitors.lua"
+    lock_path = Path(os.environ["XDG_RUNTIME_DIR"]) / "toggle-hdr.lock"
+    with lock_path.open("w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        original = config.read_text()
+        monitors = json.loads(subprocess.check_output(["hyprctl", "monitors", "-j"]))
+        monitor = next((m for m in monitors if m["name"] == "DP-3"), None)
+        if monitor is None:
+            raise RuntimeError("Monitor DP-3 não encontrado.")
+        enabled = monitor["colorManagementPreset"] not in ("hdr", "hdredid")
+        target = "hdr" if enabled else "srgb"
+        updated, count = re.subn(r'\bcm\s*=\s*"[^"]+"', f'cm = "{target}"', original)
+        if count != 1:
+            raise RuntimeError("A configuração de monitores mudou; nenhuma alteração aplicada.")
+        updated, count = re.subn(r'\bbitdepth\s*=\s*\d+', f'bitdepth = {10 if enabled else 8}', updated)
+        if count != 1:
+            raise RuntimeError("Não foi possível identificar a profundidade de cor.")
+        temporary = config.with_suffix(".lua.tmp")
+        temporary.write_text(updated)
+        temporary.replace(config)
+        try:
+            subprocess.run(["hyprctl", "reload"], check=True, capture_output=True)
+            time.sleep(1)
+            errors = subprocess.check_output(["hyprctl", "configerrors"], text=True).strip()
+            if errors:
+                raise RuntimeError(errors)
+            monitors = json.loads(subprocess.check_output(["hyprctl", "monitors", "-j"]))
+            actual = next(m for m in monitors if m["name"] == "DP-3")
+            if actual["colorManagementPreset"] != target:
+                raise RuntimeError("O monitor não aplicou o modo solicitado.")
+        except Exception:
+            temporary.write_text(original)
+            temporary.replace(config)
+            subprocess.run(["hyprctl", "reload"], capture_output=True)
+            raise
+        notify("Ligado — HDR" if enabled else "Desligado — SDR")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as error:
+        notify(f"Não foi possível alternar HDR: {error}")
+        print(error, file=sys.stderr)
+        sys.exit(1)

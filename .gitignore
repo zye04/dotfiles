@@ -1,0 +1,6 @@
+**/.env
+**/*.key
+**/api-key
+**/id_*
+**/*.bak
+**/mpvpaper_thumbnails/

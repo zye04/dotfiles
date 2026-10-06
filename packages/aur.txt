@@ -1,0 +1,15 @@
+claude-code
+cursor-bin
+github-desktop-bin
+lib32-nvidia-580xx-utils
+nvidia-580xx-dkms
+nvidia-580xx-utils
+polychromatic
+protonup-qt
+slack-desktop
+swift-bin
+upscayl-bin
+visual-studio-code-bin
+xone-dkms-git
+xone-dongle-firmware
+yay

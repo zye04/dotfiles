@@ -1,0 +1,20 @@
+alias update='sudo pacman -Syu'
+alias updateaur='yay -Syu --aur --editmenu'
+
+# --- eza (substitui ls) ---
+alias ls='eza --icons --group-directories-first'
+alias ll='eza -lah --icons --group-directories-first'
+alias la='eza -a --icons --group-directories-first'
+alias tree='eza --tree --icons'
+
+# --- bat (substitui cat) ---
+alias cat='bat --paging=never'
+
+# --- navegação rápida ---
+alias ..='cd ..'
+alias ...='cd ../..'
+alias ....='cd ../../..'
+
+# --- utilidades ---
+alias grep='grep --color=auto'
+alias my_claude='claude --dangerously-skip-permissions'

@@ -1,0 +1,206 @@
+import qs.services
+import qs.modules.common
+import qs.modules.common.widgets
+import qs.modules.common.functions
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import Quickshell
+
+// local-suite: Claude Code-style message. No card or header:
+// - user:      tinted row with a "›" prefix
+// - assistant: small dotted-globe orb, then a dim footer (time · speed · clock)
+// - interface: dim "⎿" line (command output, not sent to the model)
+// Double-click copies the whole message; drag selects part of it.
+Item {
+    id: root
+    property int messageIndex
+    property var messageData
+    property var messageInputField
+
+    readonly property string role: messageData?.role ?? ""
+    readonly property bool isUser: role === "user"
+    readonly property bool isAssistant: role === "assistant"
+    property bool copiedFlash: false
+
+    property list<var> messageBlocks: StringUtils.splitMarkdownBlocks(root.messageData?.content)
+
+    // Centring the prefix: the visual middle of a text line is halfway between the
+    // middle of its lowercase letters and the middle of its capitals, measured from
+    // the baseline. Line boxes include descender space, so centring on them looks off.
+    FontMetrics {
+        id: readingMetrics
+        font.family: Appearance.font.family.reading
+        font.pixelSize: Appearance.font.pixelSize.small
+    }
+    function glyphCenter(metrics) { // offset from the baseline (negative = up)
+        const x = metrics.tightBoundingRect("x"), h = metrics.tightBoundingRect("H");
+        return ((x.y + x.height / 2) + (h.y + h.height / 2)) / 2;
+    }
+    // y of the first line's visual middle, in `row` coordinates
+    property real firstLineCenterY: 6 + readingMetrics.ascent + glyphCenter(readingMetrics)
+    function updateFirstLineCenter() {
+        const text = blocksRepeater.count > 0 ? blocksRepeater.itemAt(0)?.firstTextItem : null;
+        if (!text) return;
+        root.firstLineCenterY = text.mapToItem(row, 0, text.baselineOffset + glyphCenter(readingMetrics)).y;
+    }
+    onWidthChanged: Qt.callLater(updateFirstLineCenter)
+    Component.onCompleted: Qt.callLater(updateFirstLineCenter)
+
+    anchors.left: parent?.left
+    anchors.right: parent?.right
+    implicitHeight: background.implicitHeight
+
+    function plainText() {
+        return (root.messageData?.rawContent ?? "").replace(/<think>[\s\S]*?<\/think>\s*/g, "").trim();
+    }
+
+    function footerText() {
+        const m = root.messageData;
+        if (!m?.done || !m.finishedAt || !m.startedAt) return "";
+        const secs = ((m.finishedAt - m.startedAt) / 1000).toFixed(1);
+        const speed = m.tokensPerSecond > 0 ? ` · ${Math.round(m.tokensPerSecond)} tok/s` : "";
+        const clock = Qt.formatTime(new Date(m.finishedAt), "hh:mm");
+        return `∗ ${secs}s${speed} · ${clock}`;
+    }
+
+    Timer {
+        id: copiedTimer
+        interval: 1200
+        onTriggered: root.copiedFlash = false
+    }
+
+    TapHandler {
+        acceptedButtons: Qt.LeftButton
+        onDoubleTapped: {
+            Quickshell.clipboardText = root.plainText();
+            root.copiedFlash = true;
+            copiedTimer.restart();
+        }
+    }
+
+    Rectangle {
+        id: background
+        anchors.left: parent.left
+        anchors.right: parent.right
+        implicitHeight: row.implicitHeight + (root.isUser ? 8 * 2 : 2 * 2)
+        radius: Appearance.rounding.small
+        color: root.copiedFlash ? Appearance.colors.colSecondaryContainer
+             : root.isUser ? Appearance.colors.colLayer2 : "transparent"
+        Behavior on color {
+            animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+        }
+
+        RowLayout {
+            id: row
+            anchors {
+                left: parent.left
+                right: parent.right
+                top: parent.top
+                // Bullet column centred at x = 19 and text starting at x = 34, the same as
+                // the orb and model name in the prompt area below (AiChat.qml).
+                leftMargin: 14
+                rightMargin: 8
+                topMargin: root.isUser ? 8 : 2
+            }
+            spacing: 10
+
+            Item { // Prefix, centred on the visual middle of the first line
+                Layout.alignment: Qt.AlignTop
+                Layout.preferredWidth: 10
+                implicitHeight: root.firstLineCenterY * 2
+
+                StyledText {
+                    id: prefixText
+                    visible: !root.isAssistant
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: root.firstLineCenterY - (baselineOffset + root.glyphCenter(prefixMetrics))
+                    text: root.isUser ? "›" : "⎿"
+                    font.pixelSize: Appearance.font.pixelSize.small
+                    color: Appearance.colors.colSubtext
+                    FontMetrics {
+                        id: prefixMetrics
+                        font: prefixText.font
+                    }
+                }
+                Orb { // Same globe as the prompt area, scaled down; spins while this reply streams
+                    visible: root.isAssistant
+                    follow: false
+                    size: 11
+                    spinning: !(root.messageData?.done ?? true)
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: root.firstLineCenterY - height / 2
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2
+                onImplicitHeightChanged: Qt.callLater(root.updateFirstLineCenter)
+                opacity: root.isUser || root.isAssistant ? 1 : 0.75
+
+                Loader { // Attached image
+                    Layout.fillWidth: true
+                    active: root.messageData?.localFilePath && root.messageData?.localFilePath.length > 0
+                    sourceComponent: AttachedFileIndicator {
+                        filePath: root.messageData?.localFilePath
+                        canRemove: false
+                    }
+                }
+
+                Item { // Waiting for the first token
+                    Layout.fillWidth: true
+                    implicitHeight: loadingIndicatorLoader.shown ? loadingIndicatorLoader.implicitHeight : 0
+                    visible: implicitHeight > 0
+                    FadeLoader {
+                        id: loadingIndicatorLoader
+                        anchors.left: parent.left
+                        shown: (root.messageBlocks.length < 1) && (!root.messageData?.done)
+                        sourceComponent: MaterialLoadingIndicator {
+                            loading: true
+                        }
+                    }
+                }
+
+                Repeater {
+                    id: blocksRepeater
+                    onItemAdded: Qt.callLater(root.updateFirstLineCenter)
+                    model: ScriptModel {
+                        values: root.messageBlocks
+                    }
+                    delegate: DelegateChooser {
+                        role: "type"
+
+                        DelegateChoice { roleValue: "code"; MessageCodeBlock {
+                            enableMouseSelection: true
+                            segmentContent: modelData.content
+                            segmentLang: modelData.lang
+                            messageData: root.messageData
+                        } }
+                        DelegateChoice { roleValue: "think"; MessageThinkBlock {
+                            enableMouseSelection: true
+                            segmentContent: modelData.content
+                            messageData: root.messageData
+                            done: root.messageData?.done ?? false
+                            completed: modelData.completed ?? false
+                        } }
+                        DelegateChoice { roleValue: "text"; MessageTextBlock {
+                            enableMouseSelection: true
+                            segmentContent: modelData.content
+                            messageData: root.messageData
+                            done: root.messageData?.done ?? false
+                            forceDisableChunkSplitting: root.messageData?.content.includes("```") ?? true
+                        } }
+                    }
+                }
+
+                StyledText { // Footer (assistant only)
+                    visible: root.isAssistant && (text.length > 0 || root.copiedFlash)
+                    text: root.copiedFlash ? Translation.tr("∗ copied") : root.footerText()
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    color: Appearance.colors.colSubtext
+                }
+            }
+        }
+    }
+}
