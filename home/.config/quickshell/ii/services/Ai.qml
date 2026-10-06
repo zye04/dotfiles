@@ -26,7 +26,22 @@ Singleton {
 
     signal responseFinished()
     signal garbageDetected() // the orb flashes red
-    readonly property bool busy: requester.running // a reply is streaming
+    readonly property bool busy: requester.running || (root.effectiveMode === "agent" && root.agentBusy)
+    property string mode: "agent"
+    readonly property string effectiveMode: mode === "agent" && opencode.connected ? "agent" : "chat"
+    property bool agentBusy: false
+    property bool planNext: false
+    property var partMessages: ({})
+    property var messageRoles: ({})
+    property var activeRequestIDs: ({})
+    property var userMessageIDs: []
+    property var sessions: []
+    property int contextLimit: 0
+    property real lastAgentActivityAt: 0
+    property bool waitingForUser: false
+    property var activePermission: null
+    readonly property string sessionID: opencode.sessionID
+    property alias agentDirectory: opencode.directory
 
     property string systemPrompt: {
         let prompt = Config.options?.ai?.systemPrompt ?? "";
@@ -61,6 +76,304 @@ Singleton {
         property int input: -1
         property int output: -1
         property int total: -1
+    }
+
+    OpencodeClient {
+        id: opencode
+        onEventReceived: payload => root.handleAgentEvent(payload)
+        onDisconnected: {
+            if (root.mode === "agent") root.addMessage("⎿ agent disconnected · using chat until it reconnects", root.interfaceRole);
+        }
+        onReconnected: {
+            const note = () => { if (root.mode === "agent") root.addMessage("⎿ agent reconnected", root.interfaceRole); };
+            if (opencode.sessionID) root.syncAgentHistory(note); else note();
+        }
+    }
+
+    IpcHandler {
+        target: "aiAgent"
+        function send(text: string): void { root.sendUserMessage(text); }
+        function permission(reply: string): void { if (root.activePermission) root.answerPermission(root.activePermission, reply); }
+        function answer(label: string): void {
+            const q = root.messageIDs.map(id => root.messageByID[id]).find(m => m.partType === "question" && !m.done);
+            if (q) root.answerQuestion(q, q.requestData.questions.map(() => [label]));
+        }
+        function stop(): void { root.stop(); }
+        function newSession(): void { root.newAgentSession(); }
+        function cwd(path: string): void { root.setAgentDirectory(path); }
+        function rewind(messageID: string): void { root.rewind(messageID); }
+        function unrevert(): void { root.unrevert(); }
+        function mode(value: string): void { root.setMode(value); }
+        function state(): string {
+            const p = root.activePermission?.requestData;
+            return JSON.stringify({
+                mode: root.mode, effectiveMode: root.effectiveMode, connected: opencode.connected, busy: root.agentBusy,
+                sessionID: root.sessionID, directory: opencode.directory, waitingForUser: root.waitingForUser,
+                activePermission: p ? { id: p.id, permission: p.permission, patterns: p.patterns } : null,
+                tokenTotal: root.tokenCount.total,
+                messages: root.messageIDs.slice(-30).map(id => {
+                    const m = root.messageByID[id];
+                    return { role: m.role, partType: m.partType, tool: m.toolPart?.tool, status: m.toolPart?.state?.status, done: m.done, text: (m.content ?? "").slice(0, 120) };
+                }),
+                userMessageIDs: root.userMessageIDs.map(m => m.id)
+            });
+        }
+    }
+
+    FileView {
+        id: agentConfig
+        path: Qt.resolvedUrl("/home/zye/Projects/dev/local-suite/config/opencode/opencode.json")
+        onLoadedChanged: {
+            if (!loaded) return;
+            try { root.contextLimit = JSON.parse(text()).provider.local.models.qwen.limit.input; }
+            catch (e) { console.warn("[Ai] could not read agent context limit"); }
+        }
+    }
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: root.agentBusy
+        onTriggered: {
+            if (!root.waitingForUser && root.lastAgentActivityAt > 0 && Date.now() - root.lastAgentActivityAt > 90000
+                && !Object.values(root.partMessages).some(m => m.toolPart?.state?.status === "running"))
+                root.agentGarbage();
+        }
+    }
+
+    function agentGarbage() {
+        if (!root.agentBusy) return;
+        root.agentBusy = false;
+        opencode.abort();
+        root.unloadLocalModel();
+        root.garbageDetected();
+        root.addMessage("⎿ model stalled or produced garbage · try /retry", root.interfaceRole);
+    }
+
+    function newAgentSession() {
+        opencode.createSession((data, ok) => {
+            if (!ok) { root.addMessage("⎿ could not create agent session", root.interfaceRole); return; }
+            root.clearMessages();
+            root.agentBusy = false;
+        });
+    }
+
+    function setMode(value) {
+        if (value !== "agent" && value !== "chat") return;
+        root.mode = value;
+        root.addMessage(value === "agent" ? "⎿ agent mode" : "⎿ chat mode", root.interfaceRole);
+    }
+
+    function addAgentPart(part) {
+        if (!part?.id || !part.sessionID || part.sessionID !== opencode.sessionID) return;
+        if (root.messageRoles[part.messageID] === "user") return;
+        if (!["text", "reasoning", "tool"].includes(part.type)) return;
+        let message = root.partMessages[part.id];
+        if (!message) {
+            message = root.aiMessageComponent.createObject(root, {
+                role: "assistant", partType: part.type, partID: part.id,
+                opencodeMessageID: part.messageID, content: "", rawContent: "",
+                thinking: false, done: part.type !== "text" && part.type !== "reasoning",
+                startedAt: part.time?.start ?? Date.now()
+            });
+            root.partMessages[part.id] = message;
+            const id = root.idForMessage(message);
+            root.messageByID[id] = message;
+            root.messageIDs = [...root.messageIDs, id];
+        }
+        if (part.type === "tool") {
+            message.toolPart = part;
+            message.done = ["completed", "error"].includes(part.state?.status);
+        } else if (part.text !== undefined) {
+            message.rawContent = part.text;
+            message.content = part.type === "reasoning" ? `<think>${part.text}</think>` : part.text;
+        }
+        if (part.time?.end) {
+            message.done = true;
+            if (part.time.start) message.startedAt = part.time.start;
+            message.finishedAt = part.time.end;
+        }
+    }
+
+    function addAgentRequest(type, data) {
+        if (!data?.id || data.sessionID !== opencode.sessionID) return;
+        if (root.activeRequestIDs[data.id]) return;
+        const message = root.aiMessageComponent.createObject(root, {
+            role: "interface", partType: type, requestData: data, content: "", rawContent: "", done: false
+        });
+        const id = root.idForMessage(message);
+        root.messageByID[id] = message;
+        if (type !== "permission") root.messageIDs = [...root.messageIDs, id];
+        root.activeRequestIDs[data.id] = message;
+        root.waitingForUser = true;
+        if (type === "permission" && !root.activePermission) root.activePermission = message;
+    }
+
+    function resolveAgentRequest(requestID, reply) {
+        const message = root.activeRequestIDs[requestID];
+        if (!message || message.done) return;
+        message.answer = reply === "once" ? "allowed once" : reply === "always" ? "always allowed" : reply === "reject" ? "denied" : reply;
+        message.done = true;
+        const open = Object.values(root.activeRequestIDs).filter(m => !m.done);
+        root.waitingForUser = open.length > 0;
+        if (root.activePermission === message) root.activePermission = open.find(m => m.partType === "permission") ?? null;
+    }
+
+    function answerPermission(message, reply) {
+        if (message.done) return;
+        opencode.replyPermission(message.requestData.id, reply, (data, ok) => {
+            root.resolveAgentRequest(message.requestData.id, reply);
+            if (!ok) root.addMessage("⎿ approval was already resolved or could not be sent", root.interfaceRole);
+        });
+    }
+
+    function answerQuestion(message, answers) {
+        if (message.done) return;
+        opencode.replyQuestion(message.requestData.id, answers, (data, ok) => {
+            if (ok) root.resolveAgentRequest(message.requestData.id, "answered");
+            else root.addMessage("⎿ question reply failed", root.interfaceRole);
+        });
+    }
+
+    function rejectQuestion(message) {
+        if (message.done) return;
+        opencode.rejectQuestion(message.requestData.id, (data, ok) => {
+            root.resolveAgentRequest(message.requestData.id, "skipped");
+        });
+    }
+
+    function handleAgentEvent(payload) {
+        const type = payload?.type ?? "";
+        const props = payload?.properties ?? payload?.data ?? {};
+        const session = props.sessionID ?? props.part?.sessionID ?? props.info?.sessionID;
+        if (session !== opencode.sessionID) return;
+        root.lastAgentActivityAt = Date.now();
+        if (type === "message.part.updated") root.addAgentPart(props.part);
+        else if (type === "message.part.delta") {
+            const message = root.partMessages[props.partID];
+            if (!message || props.field !== "text") return;
+            message.rawContent += props.delta ?? "";
+            message.content = message.partType === "reasoning" ? `<think>${message.rawContent}</think>` : message.rawContent;
+            if (/\/{24,}/.test(message.rawContent.slice(-128))) root.agentGarbage();
+        } else if (type === "message.updated" && props.info) {
+            root.messageRoles[props.info.id] = props.info.role;
+            if (props.info.role === "user" && !root.userMessageIDs.some(m => m.id === props.info.id)) {
+                const pending = root.userMessageIDs.findIndex(m => !m.id);
+                if (pending >= 0) root.userMessageIDs = root.userMessageIDs.map((m, i) => i === pending ? { id: props.info.id, text: m.text } : m);
+            }
+            const tokens = props.info.tokens;
+            if (tokens && props.info.role === "assistant") {
+                root.tokenCount.input = (tokens.input ?? 0) + (tokens.cache?.read ?? 0);
+                root.tokenCount.output = tokens.output ?? 0;
+                root.tokenCount.total = root.tokenCount.input;
+            }
+        } else if (type === "permission.asked" || type === "question.asked" || type === "question.v2.asked") {
+            root.addAgentRequest(type.startsWith("permission") ? "permission" : "question", props);
+        } else if (/^(permission|question)(\.v2)?\.(replied|rejected)$/.test(type)) {
+            root.resolveAgentRequest(props.requestID ?? props.id, props.reply ?? (type.endsWith("rejected") ? "skipped" : "answered"));
+        } else if (type === "todo.updated") {
+            root.showTodos(props.todos ?? []);
+        } else if (type === "session.status") {
+            root.agentBusy = props.status?.type === "busy";
+        } else if (type === "session.idle") {
+            root.agentBusy = false;
+            root.waitingForUser = false;
+            for (const partID in root.partMessages) {
+                const message = root.partMessages[partID];
+                if (!message.done) {
+                    message.done = true;
+                    message.finishedAt = Date.now();
+                }
+            }
+            root.responseFinished();
+        } else if (type === "session.error") {
+            root.agentBusy = false;
+            if (props.error?.name !== "MessageAbortedError") root.addMessage(`⎿ ${props.error?.data?.message ?? props.error?.name ?? "agent session error"}`, root.interfaceRole);
+        }
+    }
+
+    function showTodos(items) {
+        for (const id of root.messageIDs) {
+            if (root.messageByID[id].partType === "todo") root.messageByID[id].visibleToUser = false;
+        }
+        if (!items.length) return;
+        const message = root.aiMessageComponent.createObject(root, {
+            role: "interface", partType: "todo", todos: items, content: "", rawContent: "", done: true
+        });
+        const id = root.idForMessage(message);
+        root.messageByID[id] = message;
+        root.messageIDs = [...root.messageIDs, id];
+    }
+
+    function syncAgentHistory(done) {
+        opencode.messages((items, ok) => {
+            if (!ok || !Array.isArray(items)) { if (done) done(); return; }
+            root.clearMessages();
+            for (const item of items) {
+                const info = item.info;
+                root.messageRoles[info.id] = info.role;
+                if (info.role === "user") {
+                    const content = (item.parts ?? []).filter(p => p.type === "text").map(p => p.text ?? "").join("\n");
+                    root.addMessage(content, "user");
+                    root.userMessageIDs = [...root.userMessageIDs, { id: info.id, text: content }];
+                } else {
+                    for (const part of item.parts ?? []) root.addAgentPart(part);
+                }
+                if (info.role === "assistant" && info.tokens) {
+                    root.tokenCount.input = (info.tokens.input ?? 0) + (info.tokens.cache?.read ?? 0);
+                    root.tokenCount.output = info.tokens.output ?? 0;
+                    root.tokenCount.total = root.tokenCount.input;
+                }
+            }
+            root.syncPendingRequests();
+            if (done) done();
+        });
+    }
+
+    function syncPendingRequests() {
+        opencode.pendingPermissions((items, ok) => {
+            if (ok && Array.isArray(items)) for (const item of items) root.addAgentRequest("permission", item);
+        });
+        opencode.pendingQuestions((items, ok) => {
+            if (ok && Array.isArray(items)) for (const item of items) root.addAgentRequest("question", item);
+        });
+    }
+
+    function listAgentSessions() {
+        opencode.listSessions((items, ok) => {
+            if (ok && Array.isArray(items)) root.sessions = items.sort((a, b) => (b.time?.updated ?? 0) - (a.time?.updated ?? 0));
+        });
+    }
+
+    function loadAgentSession(id) { opencode.loadSession(id, (items, ok) => { if (ok) { root.setAgentDirectory(opencode.directory); root.syncAgentHistory(); } }); }
+    function setAgentDirectory(path) {
+        const normalized = path.replace(/^~/, "/home/zye").replace(/\/$/, "") || "/";
+        if (opencode.directory !== normalized) {
+            opencode.sessionID = "";
+            root.clearMessages();
+            root.agentBusy = false;
+        }
+        opencode.directory = normalized;
+        Config.options.ai.agentDirectory = normalized;
+        const recent = Config.options.ai.recentDirectories ?? [];
+        Config.options.ai.recentDirectories = [normalized, ...recent.filter(p => p !== normalized)].slice(0, 12);
+        root.addMessage(`⎿ cwd: ${normalized}`, root.interfaceRole);
+    }
+    function rewind(messageID) { opencode.revert(messageID, (data, ok) => { if (ok) root.syncAgentHistory(); else root.addMessage("⎿ rewind failed", root.interfaceRole); }); }
+    function unrevert() { opencode.unrevert((data, ok) => { if (ok) root.syncAgentHistory(); else root.addMessage("⎿ unrevert failed", root.interfaceRole); }); }
+    function compact() { opencode.summarize(root.requestModelName(root.getModel()), (data, ok) => root.addMessage(ok ? "⎿ context compacted" : "⎿ compact failed", root.interfaceRole)); }
+    function stop() { if (root.effectiveMode === "agent") { opencode.abort(); root.agentBusy = false; } else requester.running = false; }
+    function fetchTodos() { opencode.todos((items, ok) => { if (ok) root.showTodos(items); }); }
+    function showPermissions() {
+        opencode.pendingPermissions((pending, ok) => {
+            if (!ok) { root.addMessage("⎿ could not load permissions", root.interfaceRole); return; }
+            opencode.savedPermissions((saved, savedOK) => {
+                const current = (pending ?? []).filter(p => p.sessionID === opencode.sessionID);
+                const pendingLines = current.map(p => `- ${p.permission}: ${(p.patterns ?? []).join(", ")}`);
+                const savedLines = savedOK ? (saved?.data ?? []).map(p => `- ${p.action}: ${p.resource}`) : [];
+                root.addMessage(`pending permissions: ${current.length}\n${pendingLines.join("\n") || "none"}\n\nsaved approvals: ${savedLines.length}\n${savedLines.join("\n") || "none"}`, root.interfaceRole);
+            });
+        });
     }
 
     function idForMessage(message) {
@@ -209,6 +522,7 @@ Singleton {
 
     function addMessage(message, role) {
         if (message.length === 0) return;
+        if (role === root.interfaceRole) message = message.replace(/^⎿\s*/, "");
         const aiMessage = aiMessageComponent.createObject(root, {
             "role": role,
             "content": message,
@@ -412,6 +726,12 @@ Singleton {
         root.tokenCount.input = -1;
         root.tokenCount.output = -1;
         root.tokenCount.total = -1;
+        root.partMessages = ({});
+        root.messageRoles = ({});
+        root.activeRequestIDs = ({});
+        root.userMessageIDs = [];
+        root.activePermission = null;
+        root.waitingForUser = false;
     }
 
     FileView {
@@ -585,6 +905,23 @@ PY
 
     function sendUserMessage(message) {
         if (message.length === 0) return;
+        if (root.effectiveMode === "agent") {
+            const send = () => {
+                root.addMessage(message, "user");
+                root.userMessageIDs = [...root.userMessageIDs, { id: "", text: message }];
+                root.agentBusy = true;
+                root.lastAgentActivityAt = Date.now();
+                const agent = root.planNext ? "plan" : "";
+                root.planNext = false;
+                opencode.prompt(message, root.requestModelName(root.getModel()), root.pendingFilePath, agent, (data, ok) => {
+                    if (!ok) { root.agentBusy = false; root.addMessage("⎿ agent prompt failed", root.interfaceRole); }
+                });
+                root.pendingFilePath = "";
+            };
+            if (!opencode.sessionID) opencode.createSession((data, ok) => { if (ok) send(); else root.addMessage("⎿ agent session failed", root.interfaceRole); });
+            else send();
+            return;
+        }
         root.addMessage(message, "user");
         if (root.pendingFilePath.length > 0) {
             // The image belongs to this user message, so it is re-sent with it on every turn.
@@ -599,6 +936,12 @@ PY
     }
 
     function retryLast() {
+        if (root.effectiveMode === "agent") {
+            const last = root.userMessageIDs[root.userMessageIDs.length - 1];
+            if (last) root.sendUserMessage(last.text);
+            else root.addMessage("⎿ nothing to retry", root.interfaceRole);
+            return;
+        }
         for (let i = root.messageIDs.length - 1; i >= 0; i--) {
             if (root.messageByID[root.messageIDs[i]].role === "assistant") {
                 root.regenerate(i);

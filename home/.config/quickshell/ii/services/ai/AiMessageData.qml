@@ -26,4 +26,11 @@ QtObject {
     property real finishedAt: 0
     property real tokensPerSecond: 0
     property real thoughtEndedAt: 0 // when the reasoning part ended
+    property string partType: ""
+    property string partID: ""
+    property string opencodeMessageID: ""
+    property var toolPart: ({})
+    property var requestData: ({})
+    property string answer: ""
+    property var todos: []
 }

@@ -49,6 +49,20 @@ ContentPage {
             }
         }
 
+        ContentSubsectionLabel { text: Translation.tr("Agent server URL") }
+        MaterialTextArea {
+            Layout.fillWidth: true
+            text: Config.options.ai.agentServerUrl
+            onTextChanged: Qt.callLater(() => Config.options.ai.agentServerUrl = text.trim())
+        }
+
+        ContentSubsectionLabel { text: Translation.tr("Default agent directory") }
+        MaterialTextArea {
+            Layout.fillWidth: true
+            text: Config.options.ai.agentDirectory
+            onTextChanged: Qt.callLater(() => Config.options.ai.agentDirectory = text.trim())
+        }
+
         ContentSubsectionLabel {
             text: Translation.tr("System prompt")
         }

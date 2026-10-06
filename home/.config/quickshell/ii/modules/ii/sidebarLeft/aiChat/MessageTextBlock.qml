@@ -27,7 +27,7 @@ ColumnLayout {
     property string shownText: ""
     // local-suite: lets AiMessage centre its bullet on the first line of text
     readonly property var firstTextItem: textLinesRepeater.count > 0 ? textLinesRepeater.itemAt(0) : null
-    property bool fadeChunkSplitting: !forceDisableChunkSplitting && !editing && !/\n\|/.test(shownText) && Config.options.sidebar.ai.textFadeIn
+    property bool fadeChunkSplitting: !messageData?.partID && !forceDisableChunkSplitting && !editing && !/\n\|/.test(shownText) && Config.options.sidebar.ai.textFadeIn
 
     Layout.fillWidth: true
 
@@ -155,13 +155,15 @@ ColumnLayout {
             readOnly: !editing
             selectByMouse: enableMouseSelection || editing
             renderType: Text.NativeRendering
-            font.family: Appearance.font.family.reading
+            font.family: Appearance.font.family.monospace
             font.hintingPreference: Font.PreferNoHinting // Prevent weird bold text
-            font.pixelSize: Appearance.font.pixelSize.small
+            font.pixelSize: 13
             selectedTextColor: Appearance.m3colors.m3onSecondaryContainer
             selectionColor: Appearance.colors.colSecondaryContainer
             wrapMode: TextEdit.Wrap
-            color: root.messageData?.thinking ? Appearance.colors.colSubtext : Appearance.colors.colOnLayer1
+            color: root.messageData?.thinking || root.messageData?.partType === "reasoning" || root.messageData?.role === "interface"
+                ? Appearance.colors.colSubtext
+                : Appearance.m3colors.darkmode ? Qt.lighter(Appearance.m3colors.m3onSurface, 1.12) : Appearance.m3colors.m3onSurface
             textFormat: renderMarkdown ? TextEdit.MarkdownText : TextEdit.PlainText
             text: modelData
 

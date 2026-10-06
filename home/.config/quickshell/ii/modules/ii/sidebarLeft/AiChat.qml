@@ -19,6 +19,82 @@ Item {
 
     property var suggestionQuery: ""
     property var suggestionList: []
+    property bool sessionsLoading: false
+    property var cwdSuggestions: []
+    property string cwdQuery: ""
+
+    Process {
+        id: cwdHere
+        command: ["python3", "-c", `import json, os, subprocess
+try:
+    pid = int(json.loads(subprocess.check_output(['hyprctl', 'activewindow', '-j']))['pid'])
+    queue = [pid]
+    found = ''
+    while queue:
+        current = queue.pop(0)
+        try:
+            name = open(f'/proc/{current}/comm').read().strip()
+            if current != pid and name in ('bash', 'zsh', 'fish', 'sh', 'nu'):
+                found = os.readlink(f'/proc/{current}/cwd')
+                break
+            queue.extend(int(x) for x in open(f'/proc/{current}/task/{current}/children').read().split())
+        except (OSError, ValueError):
+            pass
+    print(found)
+except (KeyError, OSError, ValueError, subprocess.CalledProcessError):
+    print('')`]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const path = text.trim();
+                if (path) Ai.setAgentDirectory(path);
+                else Ai.addMessage("⎿ no shell found for the focused window", Ai.interfaceRole);
+            }
+        }
+    }
+
+    Process {
+        id: cwdCheck
+        property string candidate: ""
+        onExited: (code, status) => {
+            if (code === 0) Ai.setAgentDirectory(candidate);
+            else Ai.addMessage(`⎿ directory not found: ${candidate}`, Ai.interfaceRole);
+        }
+    }
+
+    Process {
+        id: cwdComplete
+        property string query: ""
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (cwdComplete.query !== root.cwdQuery) return;
+                try { root.cwdSuggestions = JSON.parse(text); }
+                catch (e) { root.cwdSuggestions = []; }
+                if (messageInputField.text.startsWith("/cwd ")) root.suggestionList = root.suggestionsFor(messageInputField.text);
+            }
+        }
+    }
+
+    function completeCwd(query) {
+        root.cwdQuery = query;
+        cwdComplete.query = query;
+        cwdComplete.exec(["python3", "-c", `import json, os, sys
+path = os.path.expanduser(sys.argv[1])
+parent, prefix = (path, '') if path.endswith('/') else os.path.split(path)
+parent = parent or '.'
+try:
+    names = [os.path.join(parent, name) for name in os.listdir(parent) if name.startswith(prefix) and os.path.isdir(os.path.join(parent, name))]
+    print(json.dumps(sorted(names)[:20]))
+except OSError:
+    print('[]')`, query]);
+    }
+
+    Connections {
+        target: Ai
+        function onSessionsChanged() {
+            root.sessionsLoading = false;
+            if (messageInputField.text.startsWith("/resume ")) root.suggestionList = root.suggestionsFor(messageInputField.text);
+        }
+    }
 
     Binding {
         target: Ai
@@ -45,10 +121,10 @@ Item {
         messageInputField.forceActiveFocus();
         if (event.modifiers === Qt.NoModifier) {
             if (event.key === Qt.Key_PageUp) {
-                messageListView.contentY = Math.max(0, messageListView.contentY - messageListView.height / 2);
+                messageListView.scrollBy(-messageListView.height / 2);
                 event.accepted = true;
             } else if (event.key === Qt.Key_PageDown) {
-                messageListView.contentY = Math.min(messageListView.contentHeight - messageListView.height / 2, messageListView.contentY + messageListView.height / 2);
+                messageListView.scrollBy(messageListView.height / 2);
                 event.accepted = true;
             }
         }
@@ -63,19 +139,52 @@ Item {
         { name: "help", description: Translation.tr("List commands"), takesArgs: false,
             execute: () => Ai.addMessage(root.allCommands.map(cmd => `- \`${root.commandPrefix}${cmd.name}\` ${cmd.description}`).join("\n"), Ai.interfaceRole) },
         { name: "clear", description: Translation.tr("Clear the conversation"), takesArgs: false,
-            execute: () => Ai.clearMessages() },
+            execute: () => Ai.effectiveMode === "agent" ? Ai.newAgentSession() : Ai.clearMessages() },
         { name: "model", description: Translation.tr("Choose the model"), takesArgs: true,
             execute: args => Ai.setModel(args[0]) },
         { name: "effort", description: Translation.tr("Reasoning effort: off, low, medium, high"), takesArgs: true,
             execute: args => Ai.setEffort(args[0]) },
         { name: "attach", description: Translation.tr("Attach an image (path). Ctrl+V pastes a copied image"), takesArgs: true,
             execute: args => Ai.attachFile(args.join(" ").trim()) },
-        { name: "resume", description: Translation.tr("Resume a saved conversation"), takesArgs: true,
+        { name: "resume", description: Translation.tr("Resume a conversation"), takesArgs: true,
             execute: args => {
                 const name = args.join(" ").trim();
-                if (name.length === 0) Ai.addMessage(Translation.tr("Usage: %1resume NAME").arg(root.commandPrefix), Ai.interfaceRole);
+                if (Ai.effectiveMode === "agent") {
+                    if (name === "all") {
+                        Ai.listAgentSessions();
+                        messageInputField.text = "/resume all ";
+                    } else if (name.length === 0) { Ai.listAgentSessions(); }
+                    else Ai.loadAgentSession(args[0] === "all" ? args[1] : args[0]);
+                } else if (name.length === 0) Ai.addMessage(Translation.tr("Usage: %1resume NAME").arg(root.commandPrefix), Ai.interfaceRole);
                 else Ai.loadChat(name);
             } },
+        { name: "compact", description: Translation.tr("Summarize the agent context"), takesArgs: false,
+            execute: () => Ai.compact() },
+        { name: "rewind", description: Translation.tr("Undo to a user message"), takesArgs: true,
+            execute: args => { if (args[0]) Ai.rewind(args[0]); } },
+        { name: "unrevert", description: Translation.tr("Restore the rewound messages"), takesArgs: false,
+            execute: () => Ai.unrevert() },
+        { name: "stop", description: Translation.tr("Stop the current reply"), takesArgs: false,
+            execute: () => Ai.stop() },
+        { name: "plan", description: Translation.tr("Use the read-only plan agent for the next prompt"), takesArgs: false,
+            execute: () => { Ai.planNext = true; Ai.addMessage("⎿ next prompt uses plan", Ai.interfaceRole); } },
+        { name: "cwd", description: Translation.tr("Working directory for new agent sessions"), takesArgs: true,
+            execute: args => {
+                if (args[0] === "here") cwdHere.running = true;
+                else if (args.length && args[0]) {
+                    cwdCheck.candidate = args.join(" ").replace(/^~/, "/home/zye");
+                    cwdCheck.exec(["test", "-d", cwdCheck.candidate]);
+                }
+                else Ai.addMessage(`⎿ cwd: ${Ai.agentDirectory}`, Ai.interfaceRole);
+            } },
+        { name: "chat", description: Translation.tr("Use direct model chat"), takesArgs: false,
+            execute: () => Ai.setMode("chat") },
+        { name: "agent", description: Translation.tr("Use the local agent"), takesArgs: false,
+            execute: () => Ai.setMode("agent") },
+        { name: "todo", description: Translation.tr("Show the agent todo list"), takesArgs: false,
+            execute: () => Ai.fetchTodos() },
+        { name: "permissions", description: Translation.tr("Show pending and saved agent permissions"), takesArgs: false,
+            execute: () => Ai.showPermissions() },
         { name: "export", description: Translation.tr("Save this conversation under a name"), takesArgs: true,
             execute: args => {
                 const name = args.join(" ").trim();
@@ -138,8 +247,28 @@ Item {
             return filter(Ai.effortLevels, level => level)
                 .map(level => ({ name: `/effort ${level}`, displayName: level + (level === Ai.effort ? " ✓" : ""), description: root.effortDescriptions[level], run: true }));
         case "resume":
+            if (Ai.effectiveMode === "agent") {
+                if (!root.sessionsLoading && Ai.sessions.length === 0) {
+                    root.sessionsLoading = true;
+                    Ai.listAgentSessions();
+                }
+                const all = query === "all" || query.startsWith("all ");
+                const search = query.replace(/^all\s*/, "");
+                return Ai.sessions.filter(s => all || s.directory === Ai.agentDirectory)
+                    .filter(s => ((s.title ?? "") + s.id + (s.directory ?? "")).toLowerCase().includes(search.toLowerCase()))
+                    .map(s => ({ name: `/resume ${all ? "all " : ""}${s.id}`, displayName: s.title ?? s.id,
+                        description: `${Qt.formatDateTime(new Date(s.time?.updated ?? 0), "MMM d hh:mm")}${all ? " · " + s.directory : ""}`, run: true }));
+            }
             return filter(Ai.savedChats, chatName)
                 .map(path => ({ name: `/resume ${chatName(path)}`, displayName: chatName(path), description: path, run: true }));
+        case "rewind":
+            return filter(Ai.userMessageIDs, m => m.text)
+                .map(m => ({ name: `/rewind ${m.id}`, displayName: m.text.split("\n")[0], description: m.id, run: true }));
+        case "cwd":
+            return [{ name: "/cwd here", displayName: "here", description: "focused window's shell", run: true },
+                ...(Config.options.ai.recentDirectories ?? []).map(path => ({ name: `/cwd ${path}`, displayName: path, description: "recent", run: true })),
+                ...root.cwdSuggestions.map(path => ({ name: `/cwd ${path}`, displayName: path, description: "directory", run: true }))]
+                .filter(item => item.name.toLowerCase().includes(query.toLowerCase()));
         case "export":
             return filter(Ai.savedChats, chatName)
                 .map(path => ({ name: `/export ${chatName(path)}`, displayName: chatName(path), description: Translation.tr("Overwrite this save"), run: true }));
@@ -180,7 +309,8 @@ Item {
         }
 
         // Always scroll to bottom when user sends a message
-        messageListView.positionViewAtEnd();
+        messageListView.followTail = true;
+        tailScroll.restart();
     }
 
     Process {
@@ -232,23 +362,50 @@ Item {
                 id: messageListView
                 z: 0
                 anchors.fill: parent
-                spacing: 10
+                spacing: 3
                 popin: false
                 topMargin: 6
 
                 touchpadScrollFactor: Config.options.interactions.scrolling.touchpadScrollFactor * 1.4
                 mouseScrollFactor: Config.options.interactions.scrolling.mouseScrollFactor * 1.4
 
-                property int lastResponseLength: 0
-                // onContentHeightChanged: {
-                //     if (atYEnd)
-                //         Qt.callLater(positionViewAtEnd);
-                // }
-                // onCountChanged: {
-                //     // Auto-scroll when new messages are added
-                //     if (atYEnd)
-                //         Qt.callLater(positionViewAtEnd);
-                // }
+                property bool followTail: true
+                function scrollBy(delta) {
+                    const end = Math.max(originY, originY + contentHeight - height);
+                    const next = Math.max(originY, Math.min(contentY + delta, end));
+                    followTail = delta >= 0 && next >= end - 1;
+                    contentY = next;
+                }
+                onContentHeightChanged: if (followTail) tailScroll.restart()
+                onHeightChanged: if (followTail) tailScroll.restart()
+                onCountChanged: {
+                    if (count === 0) followTail = true;
+                    if (followTail) tailScroll.restart();
+                }
+                onMovementStarted: followTail = false
+                onMovementEnded: followTail = atYEnd
+                onAtYEndChanged: if (atYEnd) followTail = true
+
+                Timer {
+                    id: tailScroll
+                    interval: 0
+                    onTriggered: {
+                        if (!messageListView.followTail) return;
+                        messageListView.forceLayout();
+                        messageListView.positionViewAtEnd();
+                    }
+                }
+                WheelHandler {
+                    target: null
+                    onWheel: event => {
+                        const delta = event.pixelDelta.y || event.angleDelta.y / 120 * messageListView.mouseScrollFactor;
+                        messageListView.scrollBy(-delta);
+                        event.accepted = true;
+                    }
+                }
+                ScrollBar.vertical: StyledScrollBar {
+                    onPressedChanged: messageListView.followTail = !pressed && messageListView.atYEnd
+                }
 
                 add: null // Prevent function calls from being janky
 
@@ -258,14 +415,21 @@ Item {
                         return message?.visibleToUser ?? true;
                     })
                 }
-                delegate: AiMessage {
+                delegate: Loader {
                     required property var modelData
                     required property int index
-                    messageIndex: index
-                    messageData: {
-                        Ai.messageByID[modelData];
-                    }
-                    messageInputField: root.inputField
+                    property var entry: Ai.messageByID[modelData]
+                    width: messageListView.width
+                    height: item?.implicitHeight ?? 0
+                    sourceComponent: !entry ? null : entry.partType === "tool" ? toolRow :
+                        entry?.partType === "permission" ? permissionRow :
+                        entry?.partType === "question" ? questionRow :
+                        entry?.partType === "todo" ? todoRow : normalRow
+                    Component { id: normalRow; AiMessage { messageIndex: index; messageData: entry; messageInputField: root.inputField } }
+                    Component { id: toolRow; MessageToolRow { messageData: entry } }
+                    Component { id: permissionRow; PermissionPrompt { messageData: entry } }
+                    Component { id: questionRow; QuestionPrompt { messageData: entry } }
+                    Component { id: todoRow; TodoBlock { messageData: entry } }
                 }
             }
 
@@ -281,13 +445,24 @@ Item {
             ScrollToBottomButton {
                 z: 3
                 target: messageListView
+                downAction: () => {
+                    messageListView.followTail = true;
+                    tailScroll.restart();
+                }
             }
         }
 
         CommandMenu {
             id: commandMenu
             items: root.suggestionList
+            visible: Ai.activePermission === null && root.suggestionList.length > 0
             onAccepted: name => root.acceptSuggestion(root.suggestionList.find(item => item.name === name), true)
+        }
+
+        PermissionPrompt {
+            id: permissionPopup
+            visible: Ai.activePermission !== null
+            messageData: Ai.activePermission
         }
 
         Rectangle { // Input area
@@ -334,6 +509,8 @@ Item {
 
                     StyledTextArea { // The actual TextArea (inside ScrollView to enable scrolling)
                         id: messageInputField
+                        font.family: Appearance.font.family.monospace
+                        font.pixelSize: 13
                         anchors.fill: parent
                         wrapMode: TextArea.Wrap
                         padding: 10
@@ -341,8 +518,29 @@ Item {
                         placeholderText: Translation.tr('Message %1… "%2" for commands').arg(Ai.getModel()?.name ?? "").arg(root.commandPrefix)
 
                         background: null
+                        // The default caret sometimes isn't repainted after whitespace-only edits; a delegate follows cursorRectangle reliably.
+                        cursorDelegate: Rectangle {
+                            width: 2
+                            color: Appearance.m3colors.m3onSurface
+                            visible: messageInputField.cursorVisible
+                            SequentialAnimation on opacity {
+                                id: caretBlink
+                                loops: Animation.Infinite
+                                running: messageInputField.cursorVisible
+                                PropertyAction { value: 1 }
+                                PauseAnimation { duration: 530 }
+                                PropertyAction { value: 0 }
+                                PauseAnimation { duration: 530 }
+                            }
+                            Connections {
+                                target: messageInputField
+                                function onCursorPositionChanged() { caretBlink.restart(); }
+                                function onTextChanged() { caretBlink.restart(); }
+                            }
+                        }
 
                         onTextChanged: {
+                            if (messageInputField.text.startsWith("/cwd ")) root.completeCwd(messageInputField.text.slice(5).trim());
                             root.suggestionList = root.suggestionsFor(messageInputField.text);
                         }
 
@@ -352,6 +550,14 @@ Item {
                         }
 
                         Keys.onPressed: event => {
+                            if (Ai.activePermission) {
+                                const reply = event.key === Qt.Key_1 ? "once" : event.key === Qt.Key_2 ? "always" :
+                                    (event.key === Qt.Key_3 || event.key === Qt.Key_Escape) ? "reject" : "";
+                                if (reply) { Ai.answerPermission(Ai.activePermission, reply); event.accepted = true; return; }
+                                if (event.key === Qt.Key_Up) { permissionPopup.move(-1); event.accepted = true; return; }
+                                if (event.key === Qt.Key_Down) { permissionPopup.move(1); event.accepted = true; return; }
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { permissionPopup.acceptSelected(); event.accepted = true; return; }
+                            }
                             if (event.key === Qt.Key_Tab) {
                                 root.acceptSuggestion(root.suggestionList[commandMenu.selectedIndex], false);
                                 event.accepted = true;
@@ -410,6 +616,9 @@ Item {
                                     event.accepted = true;
                                 } else if (Ai.pendingFilePath.length > 0) {
                                     Ai.attachFile("");
+                                    event.accepted = true;
+                                } else if (Ai.busy) {
+                                    Ai.stop();
                                     event.accepted = true;
                                 } else {
                                     event.accepted = false;
@@ -499,6 +708,12 @@ Item {
                         color: Appearance.colors.colOnLayer2
                     }
                     StyledText {
+                        visible: Ai.effectiveMode === "agent"
+                        text: "· " + Ai.agentDirectory.split("/").filter(Boolean).pop()
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        color: Appearance.colors.colSubtext
+                    }
+                    StyledText {
                         text: "·"
                         color: Appearance.colors.colSubtext
                     }
@@ -520,17 +735,17 @@ Item {
                         }
                     }
                     StyledText {
-                        visible: Ai.tokenCount.total > 0
                         text: "·"
                         color: Appearance.colors.colSubtext
-                        opacity: 0.6
                     }
                     StyledText {
-                        visible: Ai.tokenCount.total > 0
-                        text: `${(Ai.tokenCount.total / 1000).toFixed(1)}K/${Math.round((Ai.getModel()?.context_size ?? 0) / 1024)}K`
+                        readonly property int used: Math.max(0, Ai.tokenCount.total)
+                        readonly property int limit: Ai.effectiveMode === "agent" ? Ai.contextLimit : (Ai.getModel()?.context_size ?? 0)
+                        readonly property bool nearLimit: limit > 0 && used / limit >= 0.8
+                        function short(n) { return n < 1000 ? `${n}` : `${(n / 1000).toFixed(n < 10000 ? 1 : 0)}k`; }
+                        text: `ctx ${short(used)}/${short(limit)}`
                         font.pixelSize: Appearance.font.pixelSize.smaller
-                        color: Appearance.colors.colSubtext
-                        opacity: 0.6
+                        color: nearLimit ? Appearance.colors.colError : Appearance.colors.colSubtext
                         MouseArea {
                             id: contextMouse
                             anchors.fill: parent

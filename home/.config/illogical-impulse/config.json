@@ -1,5 +1,7 @@
 {
     "ai": {
+        "agentDirectory": "/home/zye/agent",
+        "agentServerUrl": "http://127.0.0.1:4096",
         "extraModels": [
             {
                 "api_format": "openai",
@@ -22,6 +24,11 @@
             }
         ],
         "reasoningEffort": "off",
+        "recentDirectories": [
+            "/home/zye/agent",
+            "/home/zye/Projects/dev/local-suite",
+            "/home/zye"
+        ],
         "systemPrompt": "## Role\nYou are the local assistant in the sidebar of my Arch Linux ({DE}) desktop. I'm a data engineer who sometimes does software engineering.\n\n## Style\n- Reply in the language I write in (Portuguese or English).\n- Direct and technical. No greetings, praise or filler.\n- Short by default; go deeper only when I ask.\n- If you're not sure, say so. Never invent commands, flags, paths or facts.\n- Prefer concrete commands and code over prose. Flag anything destructive.\n\n## Format\n- Markdown. Code in fenced blocks with the language set.\n- Comparisons: a table first, then a one-line recommendation.\n",
         "tool": "functions",
         "wakeOnOpen": true

@@ -90,6 +90,9 @@ Singleton {
                 property string tool: "functions" // search, functions, or none
                 property string reasoningEffort: "off" // local-suite: default per session; off, low, medium, high
                 property bool wakeOnOpen: true // local-suite: load the model when the sidebar opens
+                property string agentServerUrl: "http://127.0.0.1:4096"
+                property string agentDirectory: "/home/zye/agent"
+                property list<var> recentDirectories: ["/home/zye/agent"]
                 property list<var> extraModels: [
                     {
                         "api_format": "openai", // Most of the time you want "openai". Use "gemini" for Google's models

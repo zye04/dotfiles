@@ -30,8 +30,8 @@ Item {
     // the baseline. Line boxes include descender space, so centring on them looks off.
     FontMetrics {
         id: readingMetrics
-        font.family: Appearance.font.family.reading
-        font.pixelSize: Appearance.font.pixelSize.small
+        font.family: Appearance.font.family.monospace
+        font.pixelSize: 13
     }
     function glyphCenter(metrics) { // offset from the baseline (negative = up)
         const x = metrics.tightBoundingRect("x"), h = metrics.tightBoundingRect("H");
@@ -44,8 +44,8 @@ Item {
         if (!text) return;
         root.firstLineCenterY = text.mapToItem(row, 0, text.baselineOffset + glyphCenter(readingMetrics)).y;
     }
-    onWidthChanged: Qt.callLater(updateFirstLineCenter)
-    Component.onCompleted: Qt.callLater(updateFirstLineCenter)
+    onWidthChanged: updateFirstLineCenter()
+    Component.onCompleted: updateFirstLineCenter()
 
     anchors.left: parent?.left
     anchors.right: parent?.right
@@ -83,10 +83,10 @@ Item {
         id: background
         anchors.left: parent.left
         anchors.right: parent.right
-        implicitHeight: row.implicitHeight + (root.isUser ? 8 * 2 : 2 * 2)
+        implicitHeight: row.implicitHeight + (root.isUser ? 10 : 4)
         radius: Appearance.rounding.small
-        color: root.copiedFlash ? Appearance.colors.colSecondaryContainer
-             : root.isUser ? Appearance.colors.colLayer2 : "transparent"
+        color: root.copiedFlash ? Appearance.colors.colSecondaryContainer :
+            root.isUser ? Appearance.colors.colLayer2 : "transparent"
         Behavior on color {
             animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
         }
@@ -101,7 +101,7 @@ Item {
                 // the orb and model name in the prompt area below (AiChat.qml).
                 leftMargin: 14
                 rightMargin: 8
-                topMargin: root.isUser ? 8 : 2
+                topMargin: root.isUser ? 5 : 2
             }
             spacing: 10
 
@@ -134,9 +134,10 @@ Item {
             }
 
             ColumnLayout {
+                Layout.alignment: Qt.AlignTop
                 Layout.fillWidth: true
-                spacing: 2
-                onImplicitHeightChanged: Qt.callLater(root.updateFirstLineCenter)
+                spacing: 0
+                onImplicitHeightChanged: root.updateFirstLineCenter()
                 opacity: root.isUser || root.isAssistant ? 1 : 0.75
 
                 Loader { // Attached image
@@ -164,7 +165,7 @@ Item {
 
                 Repeater {
                     id: blocksRepeater
-                    onItemAdded: Qt.callLater(root.updateFirstLineCenter)
+                    onItemAdded: root.updateFirstLineCenter()
                     model: ScriptModel {
                         values: root.messageBlocks
                     }

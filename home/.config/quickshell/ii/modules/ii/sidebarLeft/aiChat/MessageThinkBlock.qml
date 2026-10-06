@@ -49,8 +49,8 @@ Item {
             background: null
             text: root.headerText()
             renderType: Text.NativeRendering
-            font.family: Appearance.font.family.reading
-            font.pixelSize: Appearance.font.pixelSize.small
+            font.family: Appearance.font.family.monospace
+            font.pixelSize: 13
             color: headerMouse.containsMouse && root.completed ? Appearance.colors.colOnLayer1 : Appearance.colors.colSubtext
 
             MouseArea {
