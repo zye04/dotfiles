@@ -186,7 +186,7 @@ Singleton {
             message.done = ["completed", "error"].includes(part.state?.status);
         } else if (part.text !== undefined) {
             message.rawContent = part.text;
-            message.content = part.type === "reasoning" ? `<think>${part.text}</think>` : part.text;
+            message.content = part.type === "reasoning" ? `<think>${part.text}</think>` : part.type === "text" ? part.text.replace(/^\s+/, "") : part.text;
         }
         if (part.time?.end) {
             message.done = true;
@@ -253,8 +253,8 @@ Singleton {
             const message = root.partMessages[props.partID];
             if (!message || props.field !== "text") return;
             message.rawContent += props.delta ?? "";
-            message.content = message.partType === "reasoning" ? `<think>${message.rawContent}</think>` : message.rawContent;
-            if (/\/{24,}/.test(message.rawContent.slice(-128))) root.agentGarbage();
+            message.content = message.partType === "reasoning" ? `<think>${message.rawContent}</think>` : message.partType === "text" ? message.rawContent.replace(/^\s+/, "") : message.rawContent;
+            if (/\/{24,}|!{24,}/.test(message.rawContent.slice(-128))) root.agentGarbage();
         } else if (type === "message.updated" && props.info) {
             root.messageRoles[props.info.id] = props.info.role;
             if (props.info.role === "user" && !root.userMessageIDs.some(m => m.id === props.info.id)) {
@@ -752,10 +752,10 @@ Singleton {
             if (requester.message.done) return;
             requester.message.done = true;
             requester.message.finishedAt = Date.now();
-            // Known llama.cpp CUDA bug on very long prompts: all-NaN logits stream "////..."
-            if (/\/{24,}/.test(requester.message.content)) {
+            // All-NaN logits stream "////..." (llama.cpp CUDA bug) or "!!!!..."
+            if (/\/{24,}|!{24,}/.test(requester.message.content)) {
                 root.garbageDetected();
-                root.addMessage(Translation.tr("The model produced garbage (a known llama.cpp bug on very long contexts). Use /unload, then /retry or /clear."), root.interfaceRole);
+                root.addMessage(Translation.tr("The model produced garbage (all-NaN logits on a long prompt). Use /unload, then /retry or /clear."), root.interfaceRole);
             }
             if (root.postResponseHook) {
                 root.postResponseHook();

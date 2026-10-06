@@ -5,8 +5,8 @@
         "extraModels": [
             {
                 "api_format": "openai",
-                "context_size": 65536,
-                "description": "Qwen3.8 27B on the RTX 4080 (llama-swap). Unloads after 5 min idle. /effort sets reasoning.",
+                "context_size": 131072,
+                "description": "Qwen3.8 27B on the RTX 4080 (ExLlamaV3, via llama-swap). Unloads after 5 min idle. /effort sets reasoning.",
                 "efforts": {
                     "high": "qwen:high",
                     "low": "qwen:low",

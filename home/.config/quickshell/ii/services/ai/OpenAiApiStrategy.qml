@@ -2,6 +2,7 @@ import QtQuick
 
 ApiStrategy {
     property bool isReasoning: false
+    property bool trimLead: true // TabbyAPI starts the reply with "\n\n"; display only, rawContent keeps it
     
     function buildEndpoint(model: AiModel): string {
         // console.log("[AI] Endpoint: " + model.endpoint);
@@ -113,7 +114,12 @@ ApiStrategy {
                 newContent = responseReasoning;
             }
 
-            message.content += newContent;
+            let shown = newContent;
+            if (trimLead && responseContent && responseContent.length > 0) {
+                shown = newContent.replace(/^\s+/, "");
+                if (shown.length > 0) trimLead = false;
+            }
+            message.content += shown;
             message.rawContent += newContent;
 
             // llama-server adds generation speed to the final chunk
@@ -152,6 +158,7 @@ ApiStrategy {
     
     function reset() {
         isReasoning = false;
+        trimLead = true;
     }
 
 }
