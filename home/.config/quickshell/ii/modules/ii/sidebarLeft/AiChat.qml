@@ -168,6 +168,8 @@ except OSError:
             execute: () => Ai.stop() },
         { name: "plan", description: Translation.tr("Use the read-only plan agent for the next prompt"), takesArgs: false,
             execute: () => { Ai.planNext = true; Ai.addMessage("⎿ next prompt uses plan", Ai.interfaceRole); } },
+        { name: "accept", description: Translation.tr("Toggle accept-edits mode (Shift+Tab)"), takesArgs: false,
+            execute: () => Ai.setAcceptEdits(!Ai.acceptEdits) },
         { name: "cwd", description: Translation.tr("Working directory for new agent sessions"), takesArgs: true,
             execute: args => {
                 if (args[0] === "here") cwdHere.running = true;
@@ -558,7 +560,10 @@ except OSError:
                                 if (event.key === Qt.Key_Down) { permissionPopup.move(1); event.accepted = true; return; }
                                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { permissionPopup.acceptSelected(); event.accepted = true; return; }
                             }
-                            if (event.key === Qt.Key_Tab) {
+                            if (event.key === Qt.Key_Backtab) {
+                                if (Ai.effectiveMode === "agent") Ai.setAcceptEdits(!Ai.acceptEdits);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Tab) {
                                 root.acceptSuggestion(root.suggestionList[commandMenu.selectedIndex], false);
                                 event.accepted = true;
                             } else if (event.key === Qt.Key_Up && commandMenu.visible) {
@@ -756,6 +761,18 @@ except OSError:
                             alternativeVisibleCondition: contextMouse.containsMouse
                             text: Translation.tr("Context used by this conversation\nInput: %1 · Output: %2").arg(Ai.tokenCount.input).arg(Ai.tokenCount.output)
                         }
+                    }
+                    StyledText {
+                        visible: Ai.effectiveMode === "agent" && Ai.acceptEdits
+                        text: "·"
+                        color: Appearance.colors.colSubtext
+                    }
+                    StyledText {
+                        visible: Ai.effectiveMode === "agent" && Ai.acceptEdits
+                        text: "⏵⏵ accept edits"
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        color: Appearance.colors.colSubtext
+                        opacity: 0.8
                     }
                 }
 

@@ -31,6 +31,8 @@ Singleton {
     readonly property string effectiveMode: mode === "agent" && opencode.connected ? "agent" : "chat"
     property bool agentBusy: false
     property bool planNext: false
+    property bool acceptEdits: false
+    property var childSessions: ({})
     property var partMessages: ({})
     property var messageRoles: ({})
     property var activeRequestIDs: ({})
@@ -104,10 +106,11 @@ Singleton {
         function rewind(messageID: string): void { root.rewind(messageID); }
         function unrevert(): void { root.unrevert(); }
         function mode(value: string): void { root.setMode(value); }
+        function accept(on: bool): void { root.setAcceptEdits(on); }
         function state(): string {
             const p = root.activePermission?.requestData;
             return JSON.stringify({
-                mode: root.mode, effectiveMode: root.effectiveMode, connected: opencode.connected, busy: root.agentBusy,
+                mode: root.mode, acceptEdits: root.acceptEdits, effectiveMode: root.effectiveMode, connected: opencode.connected, busy: root.agentBusy,
                 sessionID: root.sessionID, directory: opencode.directory, waitingForUser: root.waitingForUser,
                 activePermission: p ? { id: p.id, permission: p.permission, patterns: p.patterns } : null,
                 tokenTotal: root.tokenCount.total,
@@ -155,7 +158,13 @@ Singleton {
             if (!ok) { root.addMessage("⎿ could not create agent session", root.interfaceRole); return; }
             root.clearMessages();
             root.agentBusy = false;
+            root.acceptEdits = false;
         });
+    }
+
+    function setAcceptEdits(on) {
+        root.acceptEdits = on;
+        root.addMessage(on ? "⎿ accept edits on" : "⎿ accept edits off", root.interfaceRole);
     }
 
     function setMode(value) {
@@ -182,6 +191,7 @@ Singleton {
             root.messageIDs = [...root.messageIDs, id];
         }
         if (part.type === "tool") {
+            if (part.tool === "task" && part.state?.metadata?.sessionId) root.childSessions[part.state.metadata.sessionId] = true;
             message.toolPart = part;
             message.done = ["completed", "error"].includes(part.state?.status);
         } else if (part.text !== undefined) {
@@ -196,7 +206,7 @@ Singleton {
     }
 
     function addAgentRequest(type, data) {
-        if (!data?.id || data.sessionID !== opencode.sessionID) return;
+        if (!data?.id || (data.sessionID !== opencode.sessionID && !root.childSessions[data.sessionID])) return;
         if (root.activeRequestIDs[data.id]) return;
         const message = root.aiMessageComponent.createObject(root, {
             role: "interface", partType: type, requestData: data, content: "", rawContent: "", done: false
@@ -246,7 +256,14 @@ Singleton {
         const type = payload?.type ?? "";
         const props = payload?.properties ?? payload?.data ?? {};
         const session = props.sessionID ?? props.part?.sessionID ?? props.info?.sessionID;
-        if (session !== opencode.sessionID) return;
+        if (type === "session.created" && props.info?.parentID && (props.info.parentID === opencode.sessionID || root.childSessions[props.info.parentID])) {
+            root.childSessions[props.info.id] = true;
+            return;
+        }
+        if (root.childSessions[session]) {
+            root.lastAgentActivityAt = Date.now();
+            if (!/^(permission|question)(\.v2)?\./.test(type)) return;
+        } else if (session !== opencode.sessionID) return;
         root.lastAgentActivityAt = Date.now();
         if (type === "message.part.updated") root.addAgentPart(props.part);
         else if (type === "message.part.delta") {
@@ -352,6 +369,7 @@ Singleton {
             opencode.sessionID = "";
             root.clearMessages();
             root.agentBusy = false;
+            root.acceptEdits = false;
         }
         opencode.directory = normalized;
         Config.options.ai.agentDirectory = normalized;
@@ -732,6 +750,7 @@ Singleton {
         root.userMessageIDs = [];
         root.activePermission = null;
         root.waitingForUser = false;
+        root.childSessions = ({});
     }
 
     FileView {
@@ -911,7 +930,7 @@ PY
                 root.userMessageIDs = [...root.userMessageIDs, { id: "", text: message }];
                 root.agentBusy = true;
                 root.lastAgentActivityAt = Date.now();
-                const agent = root.planNext ? "plan" : "";
+                const agent = root.planNext ? "plan" : root.acceptEdits ? "local-accept" : "";
                 root.planNext = false;
                 opencode.prompt(message, root.requestModelName(root.getModel()), root.pendingFilePath, agent, (data, ok) => {
                     if (!ok) { root.agentBusy = false; root.addMessage("⎿ agent prompt failed", root.interfaceRole); }

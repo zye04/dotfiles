@@ -13,11 +13,17 @@ Item {
     readonly property bool failed: state.status === "error"
     readonly property string tool: part.tool ?? ""
     readonly property string output: String(state.output ?? "")
-    readonly property var lines: output.split("\n")
+    readonly property string taskText: (output.match(/<task_result>\n?([\s\S]*?)\n?<\/task_result>/)?.[1] ?? output).trim()
+    readonly property var lines: (tool === "task" ? taskText : output).split("\n")
+    readonly property int previewLines: tool === "task" ? 1 : 3
     readonly property string path: state.input?.filePath ?? state.input?.path ?? ""
     readonly property string diff: state.metadata?.diff ?? state.input?.diff ?? ""
     readonly property string heading: {
         const input = state.input ?? {};
+        if (tool === "task") {
+            const agent = String(state.input?.subagent_type ?? "explore");
+            return `${agent.charAt(0).toUpperCase() + agent.slice(1)}(${state.input?.description ?? state.title ?? ""})`;
+        }
         if (tool === "bash") return `Bash(${String(input.command ?? "").split("\n")[0]})`;
         if (tool === "read") return `Read(${path})`;
         if (tool === "write") return `Write(${path})`;
@@ -36,7 +42,7 @@ Item {
             const minus = diff.split("\n").filter(s => s.startsWith("-") && !s.startsWith("---")).length;
             return `+${plus} −${minus}`;
         }
-        return lines.slice(0, expanded ? lines.length : 3).join("\n");
+        return lines.slice(0, expanded ? lines.length : previewLines).join("\n");
     }
 
     anchors.left: parent?.left
@@ -94,8 +100,8 @@ Item {
                 color: Appearance.colors.colSubtext
             }
             StyledText {
-                visible: !root.expanded && root.lines.length > 3 && root.tool === "bash"
-                text: `… +${root.lines.length - 3} lines (click to expand)`
+                visible: !root.expanded && !root.running && root.lines.length > root.previewLines && (root.tool === "bash" || root.tool === "task")
+                text: `… +${root.lines.length - root.previewLines} lines (click to expand)`
                 font.family: Appearance.font.family.monospace
                 font.pixelSize: 13
                 color: Appearance.colors.colSubtext
