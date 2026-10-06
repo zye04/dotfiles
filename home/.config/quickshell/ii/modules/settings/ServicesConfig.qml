@@ -1,11 +1,61 @@
 import QtQuick
 import QtQuick.Layouts
+import Quickshell.Io
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 
 ContentPage {
+    id: root
     forceWidth: true
+
+    // local-suite: frontier planner login status and local model list
+    property string claudeStatus: Translation.tr("checking…")
+    property var localModels: []
+    property string modelNote: Translation.tr("A new model loads on the next message.")
+    readonly property string suiteDir: "/home/zye/Projects/dev/local-suite"
+
+    function refreshClaudeStatus() { claudeStatusProc.running = true; }
+    function refreshModels() { modelListProc.running = true; }
+    Component.onCompleted: { refreshClaudeStatus(); refreshModels(); }
+
+    Process {
+        id: claudeStatusProc
+        command: ["claude", "auth", "status", "--json"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const d = JSON.parse(text);
+                    root.claudeStatus = d.loggedIn ? `${d.email ?? d.authMethod} · ${d.subscriptionType ?? d.authMethod}` : Translation.tr("not logged in");
+                } catch (e) {
+                    root.claudeStatus = Translation.tr("not logged in");
+                }
+            }
+        }
+    }
+    Process {
+        id: claudeLoginProc
+        command: ["kitty", "-e", "claude", "auth", "login"]
+        onExited: root.refreshClaudeStatus()
+    }
+    Process {
+        id: modelListProc
+        command: ["python3", `${root.suiteDir}/tools/local-model/models.py`, "list"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { root.localModels = JSON.parse(text).filter(m => m.format === "exl3"); } catch (e) { root.localModels = []; }
+            }
+        }
+    }
+    Process {
+        id: modelSelectProc
+        property string name: ""
+        command: ["python3", `${root.suiteDir}/tools/local-model/models.py`, "select", modelSelectProc.name]
+        onExited: code => {
+            root.modelNote = code === 0 ? Translation.tr("Switched to %1. It loads on the next message.").arg(name) : Translation.tr("Switch failed (see qs log).");
+            root.refreshModels();
+        }
+    }
 
     ContentSection {
         icon: "neurology"
@@ -46,6 +96,76 @@ ContentPage {
                     { displayName: Translation.tr("When sidebar opens"), value: true },
                     { displayName: Translation.tr("On first message"), value: false },
                 ]
+            }
+        }
+
+        ContentSubsection {
+            title: Translation.tr("Frontier planner")
+            Layout.bottomMargin: 6
+            tooltip: Translation.tr("/plan-frontier asks Claude (through your Claude Code login) for a plan, which the local agent then runs.\n/frontier-model and /frontier-effort change these for the current session")
+
+            ConfigRow {
+                StyledText {
+                    Layout.fillWidth: true
+                    text: root.claudeStatus
+                    color: Appearance.colors.colSubtext
+                }
+                RippleButtonWithIcon {
+                    materialIcon: "login"
+                    mainText: Translation.tr("Log in")
+                    onClicked: claudeLoginProc.running = true
+                }
+            }
+            ContentSubsectionLabel { text: Translation.tr("Model") }
+            ConfigSelectionArray {
+                buttonWidth: 148
+                currentValue: Config.options.ai.frontierModel
+                onSelected: newValue => { Config.options.ai.frontierModel = newValue; }
+                options: [
+                    { displayName: "Opus", value: "opus" },
+                    { displayName: "Sonnet", value: "sonnet" },
+                    { displayName: "Haiku", value: "haiku" },
+                ]
+            }
+            ContentSubsectionLabel { text: Translation.tr("Effort") }
+            ConfigSelectionArray {
+                buttonWidth: 89
+                currentValue: Config.options.ai.frontierEffort
+                onSelected: newValue => { Config.options.ai.frontierEffort = newValue; }
+                options: [
+                    { displayName: Translation.tr("Low"), value: "low" },
+                    { displayName: Translation.tr("Medium"), value: "medium" },
+                    { displayName: Translation.tr("High"), value: "high" },
+                    { displayName: "xhigh", value: "xhigh" },
+                    { displayName: "max", value: "max" },
+                ]
+            }
+        }
+
+        ContentSubsection {
+            title: Translation.tr("Local model")
+            Layout.bottomMargin: 6
+            tooltip: Translation.tr("EXL3 models in ~/local-models. Models without a tool-call profile (tabby_config.yml) are disabled.\nSwitching restarts llama-swap, which unloads the current model.")
+
+            StyledComboBox {
+                id: localModelSelector
+                buttonIcon: "memory"
+                textRole: "displayName"
+                model: root.localModels.map(m => ({
+                    displayName: m.name + (m.active ? " (active)" : !m.profiled ? " (no profile)" : ""),
+                    value: m.name,
+                    enabled: m.profiled && !m.active
+                }))
+                currentIndex: Math.max(0, root.localModels.findIndex(m => m.active))
+                onActivated: index => {
+                    modelSelectProc.name = model[index].value;
+                    modelSelectProc.running = true;
+                }
+            }
+            StyledText {
+                text: root.modelNote
+                color: Appearance.colors.colSubtext
+                font.pixelSize: Appearance.font.pixelSize.smaller
             }
         }
 

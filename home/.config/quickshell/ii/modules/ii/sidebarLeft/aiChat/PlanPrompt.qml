@@ -6,31 +6,25 @@ import QtQuick.Layouts
 
 Rectangle {
     id: root
-    property var messageData
-    property var request: messageData?.requestData ?? {}
     property int selectedIndex: 0
-    readonly property var replies: ["once", "always", "reject"]
-    readonly property var choices: ["yes", "yes, and don't ask again", "no"]
+    readonly property var replies: ["run", "edit", "discard"]
+    readonly property var choices: ["Run with local agent", "Edit in input", "Discard"]
     Layout.fillWidth: true
     implicitHeight: visible ? body.implicitHeight + 16 : 0
     radius: Appearance.rounding.small
     color: Appearance.colors.colLayer2
     focus: visible
-    onVisibleChanged: if (visible) forceActiveFocus()
-    onMessageDataChanged: {
-        selectedIndex = 0;
-        if (messageData) forceActiveFocus();
-    }
+    onVisibleChanged: if (visible) { selectedIndex = 0; forceActiveFocus(); }
 
     function move(delta) { selectedIndex = (selectedIndex + delta + 3) % 3; }
-    function acceptSelected() { if (messageData) Ai.answerPermission(messageData, replies[selectedIndex]); }
+    function acceptSelected() { Ai.planDecision(replies[selectedIndex]); }
 
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Up) move(-1);
         else if (event.key === Qt.Key_Down) move(1);
         else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) acceptSelected();
-        else if (event.key === Qt.Key_Escape) Ai.answerPermission(messageData, "reject");
-        else if (event.key >= Qt.Key_1 && event.key <= Qt.Key_3) Ai.answerPermission(messageData, replies[event.key - Qt.Key_1]);
+        else if (event.key === Qt.Key_Escape) Ai.planDecision("discard");
+        else if (event.key >= Qt.Key_1 && event.key <= Qt.Key_3) Ai.planDecision(replies[event.key - Qt.Key_1]);
         else return;
         event.accepted = true;
     }
@@ -46,7 +40,7 @@ Rectangle {
             Layout.fillWidth: true
             spacing: 4
             StyledText {
-                text: `Allow ${root.request.permission ?? "action"}?`
+                text: "Run this plan?"
                 font.family: Appearance.font.family.monospace
                 font.pixelSize: Ai.chatFontSize
                 font.weight: Font.Medium
@@ -54,7 +48,7 @@ Rectangle {
             }
             StyledText {
                 Layout.fillWidth: true
-                text: (root.request.patterns ?? []).join(", ")
+                text: "PLAN.md in " + Ai.agentDirectory
                 elide: Text.ElideMiddle
                 maximumLineCount: 1
                 font.family: Appearance.font.family.monospace
@@ -87,7 +81,7 @@ Rectangle {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onEntered: root.selectedIndex = choice.index
-                    onClicked: Ai.answerPermission(root.messageData, root.replies[choice.index])
+                    onClicked: Ai.planDecision(root.replies[choice.index])
                 }
             }
         }

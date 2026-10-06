@@ -157,7 +157,7 @@ ColumnLayout {
             renderType: Text.NativeRendering
             font.family: Appearance.font.family.monospace
             font.hintingPreference: Font.PreferNoHinting // Prevent weird bold text
-            font.pixelSize: 13
+            font.pixelSize: Ai.chatFontSize
             selectedTextColor: Appearance.m3colors.m3onSecondaryContainer
             selectionColor: Appearance.colors.colSecondaryContainer
             wrapMode: TextEdit.Wrap

@@ -1,3 +1,4 @@
+import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 import QtQuick
@@ -25,7 +26,8 @@ Item {
                 delegate: StyledText {
                     required property var modelData
                     text: `${modelData.status === "completed" ? "☒" : "☐"} ${modelData.content ?? ""}`
-                    font.pixelSize: Appearance.font.pixelSize.small
+                    font.family: Appearance.font.family.monospace
+                    font.pixelSize: Ai.chatFontSize
                     color: modelData.status === "in_progress" ? Appearance.colors.colPrimary : Appearance.colors.colSubtext
                 }
             }

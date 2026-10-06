@@ -92,6 +92,8 @@ ComboBox {
 
         required property var model
         required property int index
+        enabled: model?.enabled !== false // local-suite: entries can be disabled
+        opacity: enabled ? 1 : 0.5
         property color color: {
             if (root.currentIndex === itemDelegate.index) {
                 if (itemDelegate.down) return Appearance.colors.colSecondaryContainerActive;

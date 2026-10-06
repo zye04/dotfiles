@@ -26,7 +26,8 @@ Singleton {
 
     signal responseFinished()
     signal garbageDetected() // the orb flashes red
-    readonly property bool busy: requester.running || (root.effectiveMode === "agent" && root.agentBusy)
+    readonly property bool busy: root.frontierRunning || requester.running || (root.effectiveMode === "agent" && root.agentBusy)
+    readonly property int chatFontSize: 13
     property string mode: "agent"
     readonly property string effectiveMode: mode === "agent" && opencode.connected ? "agent" : "chat"
     property bool agentBusy: false
@@ -74,6 +75,18 @@ Singleton {
     // Current session's effort. Starts at the default from Settings (config.json);
     // /effort and the sidebar chip change it for this session only.
     property string effort: Config.options?.ai?.reasoningEffort ?? "off"
+    // Frontier planner (tools/frontier-plan): per-session overrides of the Settings defaults.
+    readonly property list<string> frontierModels: ["opus", "sonnet", "haiku"]
+    readonly property list<string> frontierEfforts: ["low", "medium", "high", "xhigh", "max"]
+    property string frontierModel: Config.options?.ai?.frontierModel ?? "opus"
+    property string frontierEffort: Config.options?.ai?.frontierEffort ?? "high"
+    property bool frontierRunning: false
+    property bool frontierPending: false
+    property string frontierPlan: ""
+    property var frontierRow: null
+    property var frontierLines: []
+    property bool frontierEnded: false
+    signal frontierPlanEdit(string plan)
     property QtObject tokenCount: QtObject {
         property int input: -1
         property int output: -1
@@ -107,10 +120,13 @@ Singleton {
         function unrevert(): void { root.unrevert(); }
         function mode(value: string): void { root.setMode(value); }
         function accept(on: bool): void { root.setAcceptEdits(on); }
+        function planFrontier(task: string): void { root.planFrontier(task); }
+        function planDecision(choice: string): void { root.planDecision(choice); }
+        function frontierSet(model: string, effort: string): void { root.setFrontierModel(model); root.setFrontierEffort(effort); }
         function state(): string {
             const p = root.activePermission?.requestData;
             return JSON.stringify({
-                mode: root.mode, acceptEdits: root.acceptEdits, effectiveMode: root.effectiveMode, connected: opencode.connected, busy: root.agentBusy,
+                mode: root.mode, acceptEdits: root.acceptEdits, frontier: { running: root.frontierRunning, pending: root.frontierPending, model: root.frontierModel, effort: root.frontierEffort }, effectiveMode: root.effectiveMode, connected: opencode.connected, busy: root.agentBusy,
                 sessionID: root.sessionID, directory: opencode.directory, waitingForUser: root.waitingForUser,
                 activePermission: p ? { id: p.id, permission: p.permission, patterns: p.patterns } : null,
                 tokenTotal: root.tokenCount.total,
@@ -141,6 +157,108 @@ Singleton {
             if (!root.waitingForUser && root.lastAgentActivityAt > 0 && Date.now() - root.lastAgentActivityAt > 90000
                 && !Object.values(root.partMessages).some(m => m.toolPart?.state?.status === "running"))
                 root.agentGarbage();
+        }
+    }
+
+    // ---- Frontier planner -------------------------------------------------
+    FileView {
+        id: executorFile
+        path: Qt.resolvedUrl("/home/zye/Projects/dev/local-suite/tools/frontier-plan/executor.md")
+    }
+
+    Process {
+        id: frontierProc
+        property string task: ""
+        command: ["python3", "/home/zye/Projects/dev/local-suite/tools/frontier-plan/frontier_plan.py",
+            "--cwd", opencode.directory, "--model", root.frontierModel, "--effort", root.frontierEffort, "--task", frontierProc.task]
+        stdout: SplitParser { onRead: line => root.handleFrontierLine(line) }
+        onExited: {
+            root.frontierRunning = false;
+            root.setFrontierRow("completed");
+            if (!root.frontierEnded) root.addMessage("⎿ planner exited without a plan", root.interfaceRole);
+        }
+    }
+
+    Process {
+        id: planWriter
+        onExited: (code) => {
+            if (code !== 0) { root.addMessage("⎿ could not write PLAN.md", root.interfaceRole); return; }
+            root.sendUserMessage(executorFile.text().trim());
+        }
+    }
+
+    function setFrontierModel(value) {
+        if (root.frontierModels.indexOf(value) === -1) { root.addMessage(Translation.tr("Frontier model is %1. Options: %2").arg(root.frontierModel).arg(root.frontierModels.join(", ")), root.interfaceRole); return; }
+        root.frontierModel = value; // breaks the binding to the default, on purpose
+        root.addMessage(`⎿ frontier model: ${value}`, root.interfaceRole);
+    }
+
+    function setFrontierEffort(value) {
+        if (root.frontierEfforts.indexOf(value) === -1) { root.addMessage(Translation.tr("Frontier effort is %1. Options: %2").arg(root.frontierEffort).arg(root.frontierEfforts.join(", ")), root.interfaceRole); return; }
+        root.frontierEffort = value;
+        root.addMessage(`⎿ frontier effort: ${value}`, root.interfaceRole);
+    }
+
+    function setFrontierRow(status) {
+        if (!root.frontierRow) return;
+        root.frontierRow.toolPart = { tool: "frontier", state: { status: status, title: `${root.frontierModel}·${root.frontierEffort}`, output: root.frontierLines.join("\n") } };
+        root.frontierRow.done = status !== "running";
+    }
+
+    function planFrontier(task) {
+        task = (task ?? "").trim();
+        if (task.length === 0) { root.addMessage(Translation.tr("Usage: /plan-frontier TASK"), root.interfaceRole); return; }
+        if (root.frontierRunning) { root.addMessage("⎿ a plan is already running · Esc to stop", root.interfaceRole); return; }
+        root.frontierPending = false;
+        root.frontierEnded = false;
+        root.frontierLines = [];
+        root.addMessage(task, "user");
+        const row = root.aiMessageComponent.createObject(root, { role: "assistant", partType: "tool", content: "", rawContent: "", done: false });
+        const id = root.idForMessage(row);
+        root.messageByID[id] = row;
+        root.messageIDs = [...root.messageIDs, id];
+        root.frontierRow = row;
+        root.setFrontierRow("running");
+        frontierProc.task = task;
+        root.frontierRunning = true;
+        frontierProc.running = true;
+    }
+
+    function handleFrontierLine(line) {
+        let ev;
+        try { ev = JSON.parse(line); } catch (e) { return; }
+        if (ev.type === "tool") {
+            root.frontierLines = [...root.frontierLines, `${ev.name}(${ev.target})`];
+            root.setFrontierRow("running");
+        } else if (ev.type === "done") {
+            root.frontierEnded = true;
+            root.addMessage(ev.plan, "assistant");
+            const tokens = ((ev.input_tokens + ev.output_tokens) / 1000).toFixed(1);
+            root.addMessage(`⎿ ${ev.model} · ${Math.round(ev.duration_s)}s · ${tokens}k tok · $${ev.cost_usd.toFixed(2)}`, root.interfaceRole);
+            root.frontierPlan = ev.plan;
+            root.frontierPending = true;
+        } else if (ev.type === "error") {
+            root.frontierEnded = true;
+            const login = /log ?in|auth|credential|401/i.test(ev.text) ? " · log in via Settings → Services → AI → Frontier planner" : "";
+            root.addMessage(`⎿ planner: ${ev.text}${login}`, root.interfaceRole);
+        }
+    }
+
+    function planDecision(choice) {
+        if (!root.frontierPending) return;
+        const c = String(choice);
+        const plan = root.frontierPlan;
+        if (c === "3" || c === "discard") {
+            root.frontierPending = false;
+            root.addMessage("⎿ plan discarded", root.interfaceRole);
+        } else if (c === "2" || c === "edit") {
+            root.frontierPending = false;
+            root.frontierPlanEdit(plan);
+        } else if (c === "1" || c === "run") {
+            if (root.effectiveMode !== "agent") { root.addMessage("⎿ the local agent is not available · plan kept", root.interfaceRole); return; }
+            root.frontierPending = false;
+            planWriter.command = ["bash", "-c", 'printf "%s\\n" "$1" > "$2/PLAN.md"', "_", plan, opencode.directory];
+            planWriter.running = true;
         }
     }
 
@@ -380,7 +498,7 @@ Singleton {
     function rewind(messageID) { opencode.revert(messageID, (data, ok) => { if (ok) root.syncAgentHistory(); else root.addMessage("⎿ rewind failed", root.interfaceRole); }); }
     function unrevert() { opencode.unrevert((data, ok) => { if (ok) root.syncAgentHistory(); else root.addMessage("⎿ unrevert failed", root.interfaceRole); }); }
     function compact() { opencode.summarize(root.requestModelName(root.getModel()), (data, ok) => root.addMessage(ok ? "⎿ context compacted" : "⎿ compact failed", root.interfaceRole)); }
-    function stop() { if (root.effectiveMode === "agent") { opencode.abort(); root.agentBusy = false; } else requester.running = false; }
+    function stop() { if (root.frontierRunning) frontierProc.signal(15); else if (root.effectiveMode === "agent") { opencode.abort(); root.agentBusy = false; } else requester.running = false; }
     function fetchTodos() { opencode.todos((items, ok) => { if (ok) root.showTodos(items); }); }
     function showPermissions() {
         opencode.pendingPermissions((pending, ok) => {
@@ -749,6 +867,7 @@ Singleton {
         root.activeRequestIDs = ({});
         root.userMessageIDs = [];
         root.activePermission = null;
+        root.frontierPending = false;
         root.waitingForUser = false;
         root.childSessions = ({});
     }

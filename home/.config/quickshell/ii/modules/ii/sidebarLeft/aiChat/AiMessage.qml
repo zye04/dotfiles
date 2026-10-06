@@ -23,7 +23,7 @@ Item {
     readonly property bool isAssistant: role === "assistant"
     property bool copiedFlash: false
 
-    property list<var> messageBlocks: StringUtils.splitMarkdownBlocks(root.messageData?.content)
+    property list<var> messageBlocks: root.isUser ? [{ type: "text", content: root.messageData?.content ?? "" }] : StringUtils.splitMarkdownBlocks(root.messageData?.content)
 
     // Centring the prefix: the visual middle of a text line is halfway between the
     // middle of its lowercase letters and the middle of its capitals, measured from
@@ -31,7 +31,7 @@ Item {
     FontMetrics {
         id: readingMetrics
         font.family: Appearance.font.family.monospace
-        font.pixelSize: 13
+        font.pixelSize: Ai.chatFontSize
     }
     function glyphCenter(metrics) { // offset from the baseline (negative = up)
         const x = metrics.tightBoundingRect("x"), h = metrics.tightBoundingRect("H");
@@ -116,7 +116,8 @@ Item {
                     anchors.horizontalCenter: parent.horizontalCenter
                     y: root.firstLineCenterY - (baselineOffset + root.glyphCenter(prefixMetrics))
                     text: root.isUser ? "›" : "⎿"
-                    font.pixelSize: Appearance.font.pixelSize.small
+                    font.family: Appearance.font.family.monospace
+                    font.pixelSize: Ai.chatFontSize
                     color: Appearance.colors.colSubtext
                     FontMetrics {
                         id: prefixMetrics
@@ -187,6 +188,7 @@ Item {
                         } }
                         DelegateChoice { roleValue: "text"; MessageTextBlock {
                             enableMouseSelection: true
+                            renderMarkdown: !root.isUser
                             segmentContent: modelData.content
                             messageData: root.messageData
                             done: root.messageData?.done ?? false
@@ -198,7 +200,8 @@ Item {
                 StyledText { // Footer (assistant only)
                     visible: root.isAssistant && (text.length > 0 || root.copiedFlash)
                     text: root.copiedFlash ? Translation.tr("∗ copied") : root.footerText()
-                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.family: Appearance.font.family.monospace
+                    font.pixelSize: Ai.chatFontSize
                     color: Appearance.colors.colSubtext
                 }
             }

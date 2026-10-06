@@ -144,6 +144,12 @@ except OSError:
             execute: args => Ai.setModel(args[0]) },
         { name: "effort", description: Translation.tr("Reasoning effort: off, low, medium, high"), takesArgs: true,
             execute: args => Ai.setEffort(args[0]) },
+        { name: "plan-frontier", description: Translation.tr("Plan with Claude (read-only), then run the plan locally"), takesArgs: true,
+            execute: args => Ai.planFrontier(args.join(" ")) },
+        { name: "frontier-model", description: Translation.tr("Claude model for /plan-frontier: opus, sonnet, haiku"), takesArgs: true,
+            execute: args => Ai.setFrontierModel(args[0]) },
+        { name: "frontier-effort", description: Translation.tr("Claude effort for /plan-frontier: low, medium, high, xhigh, max"), takesArgs: true,
+            execute: args => Ai.setFrontierEffort(args[0]) },
         { name: "attach", description: Translation.tr("Attach an image (path). Ctrl+V pastes a copied image"), takesArgs: true,
             execute: args => Ai.attachFile(args.join(" ").trim()) },
         { name: "resume", description: Translation.tr("Resume a conversation"), takesArgs: true,
@@ -248,6 +254,12 @@ except OSError:
         case "effort":
             return filter(Ai.effortLevels, level => level)
                 .map(level => ({ name: `/effort ${level}`, displayName: level + (level === Ai.effort ? " ✓" : ""), description: root.effortDescriptions[level], run: true }));
+        case "frontier-model":
+            return filter(Ai.frontierModels, m => m)
+                .map(m => ({ name: `/frontier-model ${m}`, displayName: m + (m === Ai.frontierModel ? " ✓" : ""), description: "", run: true }));
+        case "frontier-effort":
+            return filter(Ai.frontierEfforts, e => e)
+                .map(e => ({ name: `/frontier-effort ${e}`, displayName: e + (e === Ai.frontierEffort ? " ✓" : ""), description: "", run: true }));
         case "resume":
             if (Ai.effectiveMode === "agent") {
                 if (!root.sessionsLoading && Ai.sessions.length === 0) {
@@ -461,6 +473,20 @@ except OSError:
             onAccepted: name => root.acceptSuggestion(root.suggestionList.find(item => item.name === name), true)
         }
 
+        PlanPrompt {
+            id: planPopup
+            visible: Ai.frontierPending && Ai.activePermission === null
+        }
+
+        Connections {
+            target: Ai
+            function onFrontierPlanEdit(plan) {
+                messageInputField.text = plan;
+                messageInputField.cursorPosition = plan.length;
+                messageInputField.forceActiveFocus();
+            }
+        }
+
         PermissionPrompt {
             id: permissionPopup
             visible: Ai.activePermission !== null
@@ -512,7 +538,7 @@ except OSError:
                     StyledTextArea { // The actual TextArea (inside ScrollView to enable scrolling)
                         id: messageInputField
                         font.family: Appearance.font.family.monospace
-                        font.pixelSize: 13
+                        font.pixelSize: Ai.chatFontSize
                         anchors.fill: parent
                         wrapMode: TextArea.Wrap
                         padding: 10
@@ -552,6 +578,14 @@ except OSError:
                         }
 
                         Keys.onPressed: event => {
+                            if (Ai.frontierPending && !Ai.activePermission) {
+                                const choice = event.key >= Qt.Key_1 && event.key <= Qt.Key_3 ? planPopup.replies[event.key - Qt.Key_1] :
+                                    event.key === Qt.Key_Escape ? "discard" : "";
+                                if (choice) { Ai.planDecision(choice); event.accepted = true; return; }
+                                if (event.key === Qt.Key_Up) { planPopup.move(-1); event.accepted = true; return; }
+                                if (event.key === Qt.Key_Down) { planPopup.move(1); event.accepted = true; return; }
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { planPopup.acceptSelected(); event.accepted = true; return; }
+                            }
                             if (Ai.activePermission) {
                                 const reply = event.key === Qt.Key_1 ? "once" : event.key === Qt.Key_2 ? "always" :
                                     (event.key === Qt.Key_3 || event.key === Qt.Key_Escape) ? "reject" : "";
@@ -701,7 +735,8 @@ except OSError:
                     StyledText {
                         id: modelNameText
                         text: Ai.getModel()?.name ?? "-"
-                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        font.family: Appearance.font.family.monospace
+                        font.pixelSize: Ai.chatFontSize
                         FontMetrics {
                             id: modelNameMetrics
                             font: modelNameText.font
@@ -715,16 +750,20 @@ except OSError:
                     StyledText {
                         visible: Ai.effectiveMode === "agent"
                         text: "· " + Ai.agentDirectory.split("/").filter(Boolean).pop()
-                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        font.family: Appearance.font.family.monospace
+                        font.pixelSize: Ai.chatFontSize
                         color: Appearance.colors.colSubtext
                     }
                     StyledText {
                         text: "·"
+                        font.family: Appearance.font.family.monospace
+                        font.pixelSize: Ai.chatFontSize
                         color: Appearance.colors.colSubtext
                     }
                     StyledText {
                         text: Translation.tr("reasoning: %1").arg(Ai.effort)
-                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        font.family: Appearance.font.family.monospace
+                        font.pixelSize: Ai.chatFontSize
                         color: reasoningMouse.containsMouse ? Appearance.colors.colOnLayer2 : Appearance.colors.colSubtext
                         MouseArea {
                             id: reasoningMouse
@@ -741,6 +780,8 @@ except OSError:
                     }
                     StyledText {
                         text: "·"
+                        font.family: Appearance.font.family.monospace
+                        font.pixelSize: Ai.chatFontSize
                         color: Appearance.colors.colSubtext
                     }
                     StyledText {
@@ -749,7 +790,8 @@ except OSError:
                         readonly property bool nearLimit: limit > 0 && used / limit >= 0.8
                         function short(n) { return n < 1000 ? `${n}` : `${(n / 1000).toFixed(n < 10000 ? 1 : 0)}k`; }
                         text: `ctx ${short(used)}/${short(limit)}`
-                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        font.family: Appearance.font.family.monospace
+                        font.pixelSize: Ai.chatFontSize
                         color: nearLimit ? Appearance.colors.colError : Appearance.colors.colSubtext
                         MouseArea {
                             id: contextMouse
@@ -765,12 +807,15 @@ except OSError:
                     StyledText {
                         visible: Ai.effectiveMode === "agent" && Ai.acceptEdits
                         text: "·"
+                        font.family: Appearance.font.family.monospace
+                        font.pixelSize: Ai.chatFontSize
                         color: Appearance.colors.colSubtext
                     }
                     StyledText {
                         visible: Ai.effectiveMode === "agent" && Ai.acceptEdits
                         text: "⏵⏵ accept edits"
-                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        font.family: Appearance.font.family.monospace
+                        font.pixelSize: Ai.chatFontSize
                         color: Appearance.colors.colSubtext
                         opacity: 0.8
                     }
@@ -799,7 +844,8 @@ except OSError:
                                 id: shortcutText
                                 anchors.centerIn: parent
                                 text: shortcut.commandRepresentation
-                                font.pixelSize: Appearance.font.pixelSize.small
+                                font.family: Appearance.font.family.monospace
+                                font.pixelSize: Ai.chatFontSize
                                 font.weight: Font.Medium
                                 color: Appearance.colors.colPrimary
                             }

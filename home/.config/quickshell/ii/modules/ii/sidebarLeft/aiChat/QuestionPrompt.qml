@@ -49,7 +49,8 @@ Item {
                         Layout.fillWidth: true
                         text: questionRow.modelData.question ?? ""
                         wrapMode: Text.Wrap
-                        font.pixelSize: Appearance.font.pixelSize.small
+                        font.family: Appearance.font.family.monospace
+                        font.pixelSize: Ai.chatFontSize
                         color: Appearance.colors.colOnLayer2
                     }
                     Repeater {
@@ -58,7 +59,8 @@ Item {
                             required property int index
                             required property var modelData
                             text: `${index + 1}. ${modelData.label}${modelData.description ? " · " + modelData.description : ""}`
-                            font.pixelSize: Appearance.font.pixelSize.small
+                            font.family: Appearance.font.family.monospace
+                            font.pixelSize: Ai.chatFontSize
                             color: Appearance.colors.colPrimary
                             MouseArea {
                                 anchors.fill: parent

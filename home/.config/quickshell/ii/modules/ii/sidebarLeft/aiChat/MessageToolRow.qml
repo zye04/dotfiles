@@ -1,3 +1,4 @@
+import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 import QtQuick
@@ -20,6 +21,7 @@ Item {
     readonly property string diff: state.metadata?.diff ?? state.input?.diff ?? ""
     readonly property string heading: {
         const input = state.input ?? {};
+        if (tool === "frontier") return `Frontier(${state.title ?? ""})`;
         if (tool === "task") {
             const agent = String(state.input?.subagent_type ?? "explore");
             return `${agent.charAt(0).toUpperCase() + agent.slice(1)}(${state.input?.description ?? state.title ?? ""})`;
@@ -33,6 +35,7 @@ Item {
         return `${tool}(${path || state.title || ""})`;
     }
     readonly property string summary: {
+        if (tool === "frontier") return (expanded ? lines : lines.slice(-4)).filter(Boolean).join("\n") || (running ? "planning…" : "");
         if (running) return "running…";
         if (failed) return output || "failed";
         if (tool === "read") return `Read ${lines.length} lines`;
@@ -87,7 +90,7 @@ Item {
                 text: root.heading
                 elide: Text.ElideRight
                 font.family: Appearance.font.family.monospace
-                font.pixelSize: 13
+                font.pixelSize: Ai.chatFontSize
                 color: root.failed ? Appearance.m3colors.m3error : Appearance.colors.colSubtext
             }
             StyledText {
@@ -96,14 +99,14 @@ Item {
                 text: "⎿ " + root.summary
                 wrapMode: Text.Wrap
                 font.family: Appearance.font.family.monospace
-                font.pixelSize: 13
+                font.pixelSize: Ai.chatFontSize
                 color: Appearance.colors.colSubtext
             }
             StyledText {
                 visible: !root.expanded && !root.running && root.lines.length > root.previewLines && (root.tool === "bash" || root.tool === "task")
                 text: `… +${root.lines.length - root.previewLines} lines (click to expand)`
                 font.family: Appearance.font.family.monospace
-                font.pixelSize: 13
+                font.pixelSize: Ai.chatFontSize
                 color: Appearance.colors.colSubtext
             }
             StyledText {
@@ -112,7 +115,7 @@ Item {
                 text: root.diff
                 wrapMode: Text.WrapAnywhere
                 font.family: Appearance.font.family.monospace
-                font.pixelSize: 13
+                font.pixelSize: Ai.chatFontSize
                 color: Appearance.colors.colSubtext
             }
         }

@@ -50,7 +50,7 @@ Item {
             text: root.headerText()
             renderType: Text.NativeRendering
             font.family: Appearance.font.family.monospace
-            font.pixelSize: 13
+            font.pixelSize: Ai.chatFontSize
             color: headerMouse.containsMouse && root.completed ? Appearance.colors.colOnLayer1 : Appearance.colors.colSubtext
 
             MouseArea {

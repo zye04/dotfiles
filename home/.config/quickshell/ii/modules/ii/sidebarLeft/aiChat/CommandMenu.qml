@@ -1,3 +1,4 @@
+import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 import QtQuick
@@ -57,7 +58,8 @@ Rectangle {
 
                 StyledText {
                     text: row.modelData.displayName ?? row.modelData.name
-                    font.pixelSize: Appearance.font.pixelSize.small
+                    font.family: Appearance.font.family.monospace
+                    font.pixelSize: Ai.chatFontSize
                     font.weight: Font.Medium
                     color: Appearance.colors.colPrimary
                     Layout.preferredWidth: Math.min(implicitWidth, row.width * 0.45)
@@ -65,7 +67,8 @@ Rectangle {
                 }
                 StyledText {
                     text: row.modelData.description ?? ""
-                    font.pixelSize: Appearance.font.pixelSize.small
+                    font.family: Appearance.font.family.monospace
+                    font.pixelSize: Ai.chatFontSize
                     color: Appearance.colors.colSubtext
                     elide: Text.ElideRight
                     maximumLineCount: 1
