@@ -26,6 +26,19 @@ Singleton {
 
     signal responseFinished()
     signal garbageDetected() // the orb flashes red
+    signal inputTextRequested(string text)
+    signal commandRequested(string text)
+    // Live status line: "idle" | "thinking" | "streaming" | "tool" | "waiting"
+    property string liveState: "idle"
+    property real turnStartedAt: 0
+    readonly property int liveOutputTokens: turnFinishedTokens + Math.round(turnStreamChars / 4)
+    property int turnFinishedTokens: 0
+    property int turnStreamChars: 0
+    property var turnTokensByMessage: ({})
+    property bool turnInterrupted: false
+    property var lastPartMessage: null
+    property var todoMessage: null
+    property var childToolSeen: ({})
     readonly property bool busy: root.frontierRunning || requester.running || (root.effectiveMode === "agent" && root.agentBusy)
     readonly property int chatFontSize: 13
     property string mode: "agent"
@@ -114,6 +127,9 @@ Singleton {
             if (q) root.answerQuestion(q, q.requestData.questions.map(() => [label]));
         }
         function stop(): void { root.stop(); }
+        function loadSession(id: string): void { root.loadAgentSession(id); }
+        function setInput(text: string): void { root.inputTextRequested(text); }
+        function command(text: string): void { root.commandRequested(text); }
         function newSession(): void { root.newAgentSession(); }
         function cwd(path: string): void { root.setAgentDirectory(path); }
         function rewind(messageID: string): void { root.rewind(messageID); }
@@ -129,10 +145,10 @@ Singleton {
                 mode: root.mode, acceptEdits: root.acceptEdits, frontier: { running: root.frontierRunning, pending: root.frontierPending, model: root.frontierModel, effort: root.frontierEffort }, effectiveMode: root.effectiveMode, connected: opencode.connected, busy: root.agentBusy,
                 sessionID: root.sessionID, directory: opencode.directory, waitingForUser: root.waitingForUser,
                 activePermission: p ? { id: p.id, permission: p.permission, patterns: p.patterns } : null,
-                tokenTotal: root.tokenCount.total,
+                tokenTotal: root.tokenCount.total, liveState: root.liveState, turnStartedAt: root.turnStartedAt, liveOutputTokens: root.liveOutputTokens,
                 messages: root.messageIDs.slice(-30).map(id => {
                     const m = root.messageByID[id];
-                    return { role: m.role, partType: m.partType, tool: m.toolPart?.tool, status: m.toolPart?.state?.status, done: m.done, text: (m.content ?? "").slice(0, 120) };
+                    return { role: m.role, partType: m.partType, tool: m.toolPart?.tool, status: m.toolPart?.state?.status, done: m.done, queued: m.queued, tools: m.tools.length ? m.tools : undefined, text: (m.content ?? "").slice(0, 120) };
                 }),
                 userMessageIDs: root.userMessageIDs.map(m => m.id)
             });
@@ -155,7 +171,7 @@ Singleton {
         running: root.agentBusy
         onTriggered: {
             if (!root.waitingForUser && root.lastAgentActivityAt > 0 && Date.now() - root.lastAgentActivityAt > 90000
-                && !Object.values(root.partMessages).some(m => m.toolPart?.state?.status === "running"))
+                && !Object.values(root.partMessages).some(m => m.toolPart?.state?.status === "running" || m.tools.some(t => t.status === "running")))
                 root.agentGarbage();
         }
     }
@@ -190,13 +206,11 @@ Singleton {
     function setFrontierModel(value) {
         if (root.frontierModels.indexOf(value) === -1) { root.addMessage(Translation.tr("Frontier model is %1. Options: %2").arg(root.frontierModel).arg(root.frontierModels.join(", ")), root.interfaceRole); return; }
         root.frontierModel = value; // breaks the binding to the default, on purpose
-        root.addMessage(`⎿ frontier model: ${value}`, root.interfaceRole);
     }
 
     function setFrontierEffort(value) {
         if (root.frontierEfforts.indexOf(value) === -1) { root.addMessage(Translation.tr("Frontier effort is %1. Options: %2").arg(root.frontierEffort).arg(root.frontierEfforts.join(", ")), root.interfaceRole); return; }
         root.frontierEffort = value;
-        root.addMessage(`⎿ frontier effort: ${value}`, root.interfaceRole);
     }
 
     function setFrontierRow(status) {
@@ -282,19 +296,26 @@ Singleton {
 
     function setAcceptEdits(on) {
         root.acceptEdits = on;
-        root.addMessage(on ? "⎿ accept edits on" : "⎿ accept edits off", root.interfaceRole);
     }
 
     function setMode(value) {
         if (value !== "agent" && value !== "chat") return;
         root.mode = value;
-        root.addMessage(value === "agent" ? "⎿ agent mode" : "⎿ chat mode", root.interfaceRole);
     }
 
     function addAgentPart(part) {
         if (!part?.id || !part.sessionID || part.sessionID !== opencode.sessionID) return;
         if (root.messageRoles[part.messageID] === "user") return;
         if (!["text", "reasoning", "tool"].includes(part.type)) return;
+        if (part.type === "tool" && part.tool === "todowrite") {
+            if (Array.isArray(part.state?.input?.todos)) root.showTodos(part.state.input.todos);
+            return;
+        }
+        if (part.type === "tool" && ["read", "glob", "grep", "list"].includes(part.tool)) {
+            root.updateToolGroup(part);
+            root.refreshLive();
+            return;
+        }
         let message = root.partMessages[part.id];
         if (!message) {
             message = root.aiMessageComponent.createObject(root, {
@@ -309,9 +330,14 @@ Singleton {
             root.messageIDs = [...root.messageIDs, id];
         }
         if (part.type === "tool") {
-            if (part.tool === "task" && part.state?.metadata?.sessionId) root.childSessions[part.state.metadata.sessionId] = true;
+            const childID = part.state?.metadata?.sessionId;
+            if (part.tool === "task" && childID) {
+                root.childSessions[childID] = message;
+                message.toolUses = Math.max(Object.keys(root.childToolSeen).filter(k => root.childToolSeen[k] === childID).length, part.state?.metadata?.summary?.length ?? 0);
+            }
             message.toolPart = part;
             message.done = ["completed", "error"].includes(part.state?.status);
+            message.errorText = part.state?.status === "error" ? String(part.state?.error ?? "").split("\n")[0] : "";
         } else if (part.text !== undefined) {
             message.rawContent = part.text;
             message.content = part.type === "reasoning" ? `<think>${part.text}</think>` : part.type === "text" ? part.text.replace(/^\s+/, "") : part.text;
@@ -321,6 +347,84 @@ Singleton {
             if (part.time.start) message.startedAt = part.time.start;
             message.finishedAt = part.time.end;
         }
+        root.lastPartMessage = message;
+        root.refreshLive();
+    }
+
+    function relPath(path) {
+        const dir = opencode.directory, p = String(path ?? "");
+        if (p === dir) return ".";
+        return p.startsWith(dir + "/") ? p.slice(dir.length + 1) : p;
+    }
+
+    function toolEntry(part) {
+        const st = part.state ?? {}, input = st.input ?? {}, out = String(st.output ?? "");
+        const entry = { partID: part.id, tool: part.tool, status: st.status ?? "pending", target: "", summary: "", dir: false, errorText: "" };
+        if (part.tool === "read" || part.tool === "list") {
+            entry.target = root.relPath(input.filePath ?? input.path ?? "");
+            if (part.tool === "list" || out.includes("<type>directory</type>")) {
+                entry.dir = true;
+                entry.summary = `${out.match(/\((\d+) entries\)/)?.[1] ?? 0} entries`;
+            } else {
+                const n = out.split("\n").filter(l => /^\d+: /.test(l)).length || Number(out.match(/total (\d+) lines/)?.[1] ?? 0);
+                entry.summary = `${n} line${n === 1 ? "" : "s"}`;
+            }
+        } else {
+            entry.target = String(input.pattern ?? "") + (input.path ? ` in ${root.relPath(input.path)}` : "");
+            const n = part.tool === "grep" ? Number(out.match(/Found (\d+) match/)?.[1] ?? 0) : out.split("\n").filter(l => l.trim() && !l.startsWith("No files")).length;
+            entry.summary = part.tool === "grep" ? `${n} match${n === 1 ? "" : "es"}` : `${n} file${n === 1 ? "" : "s"}`;
+        }
+        if (entry.status === "error") entry.errorText = String(st.error ?? "").split("\n")[0];
+        if (entry.status !== "completed") entry.summary = "";
+        return entry;
+    }
+
+    function updateToolGroup(part) {
+        let group = root.partMessages[part.id];
+        if (!group) {
+            for (let i = root.messageIDs.length - 1; i >= 0; i--) {
+                const m = root.messageByID[root.messageIDs[i]];
+                if (!m.visibleToUser || ((m.partType === "text" || m.partType === "reasoning") && !m.rawContent.trim())) continue;
+                if (m.partType === "toolgroup") group = m;
+                break;
+            }
+        }
+        if (!group) {
+            group = root.aiMessageComponent.createObject(root, {
+                role: "assistant", partType: "toolgroup", opencodeMessageID: part.messageID,
+                content: "", rawContent: "", thinking: false, done: false, startedAt: part.state?.time?.start ?? Date.now()
+            });
+            const id = root.idForMessage(group);
+            root.messageByID[id] = group;
+            root.messageIDs = [...root.messageIDs, id];
+        }
+        root.partMessages[part.id] = group;
+        const entry = root.toolEntry(part);
+        const tools = group.tools.slice();
+        const at = tools.findIndex(t => t.partID === part.id);
+        if (at >= 0) tools[at] = entry; else tools.push(entry);
+        group.tools = tools;
+        group.done = tools.every(t => t.status === "completed" || t.status === "error");
+        if (group.done) group.finishedAt = Date.now();
+        root.lastPartMessage = group;
+    }
+
+    function refreshLive() {
+        let state = "idle";
+        if (root.agentBusy || root.frontierRunning) {
+            const last = root.lastPartMessage;
+            if (root.waitingForUser) state = "waiting";
+            else if (last && !last.done) state = last.partType === "text" ? "streaming" : last.partType === "reasoning" ? "thinking" : "tool";
+            else state = "thinking";
+        }
+        if (root.liveState !== state) root.liveState = state;
+    }
+
+    function appendMarker(partType, fields) {
+        const message = root.aiMessageComponent.createObject(root, Object.assign({ role: "interface", partType, content: "", rawContent: "", done: true }, fields));
+        const id = root.idForMessage(message);
+        root.messageByID[id] = message;
+        root.messageIDs = [...root.messageIDs, id];
     }
 
     function addAgentRequest(type, data) {
@@ -380,6 +484,12 @@ Singleton {
         }
         if (root.childSessions[session]) {
             root.lastAgentActivityAt = Date.now();
+            const part = props.part;
+            if (type === "message.part.updated" && part?.type === "tool" && !root.childToolSeen[part.id]) {
+                root.childToolSeen[part.id] = session;
+                const task = root.childSessions[session];
+                if (task?.partType) task.toolUses += 1;
+            }
             if (!/^(permission|question)(\.v2)?\./.test(type)) return;
         } else if (session !== opencode.sessionID) return;
         root.lastAgentActivityAt = Date.now();
@@ -388,15 +498,32 @@ Singleton {
             const message = root.partMessages[props.partID];
             if (!message || props.field !== "text") return;
             message.rawContent += props.delta ?? "";
+            root.turnStreamChars += (props.delta ?? "").length;
+            root.lastPartMessage = message;
+            root.refreshLive();
             message.content = message.partType === "reasoning" ? `<think>${message.rawContent}</think>` : message.partType === "text" ? message.rawContent.replace(/^\s+/, "") : message.rawContent;
             if (/\/{24,}|!{24,}/.test(message.rawContent.slice(-128))) root.agentGarbage();
         } else if (type === "message.updated" && props.info) {
             root.messageRoles[props.info.id] = props.info.role;
             if (props.info.role === "user" && !root.userMessageIDs.some(m => m.id === props.info.id)) {
                 const pending = root.userMessageIDs.findIndex(m => !m.id);
-                if (pending >= 0) root.userMessageIDs = root.userMessageIDs.map((m, i) => i === pending ? { id: props.info.id, text: m.text } : m);
+                if (pending >= 0) {
+                    root.userMessageIDs = root.userMessageIDs.map((m, i) => i === pending ? { id: props.info.id, text: m.text } : m);
+                    const mine = root.messageIDs.map(id => root.messageByID[id]).filter(m => m.role === "user" && !m.opencodeMessageID);
+                    const target = mine.find(m => m.queued) ?? mine[0];
+                    if (target) target.opencodeMessageID = props.info.id;
+                }
+            }
+            if (props.info.role === "assistant" && props.info.parentID) {
+                const queued = root.messageIDs.map(id => root.messageByID[id]).find(m => m.queued && m.opencodeMessageID === props.info.parentID);
+                if (queued) queued.queued = false;
             }
             const tokens = props.info.tokens;
+            if (tokens && props.info.role === "assistant" && tokens.output > 0 && root.turnTokensByMessage[props.info.id] !== tokens.output) {
+                root.turnTokensByMessage[props.info.id] = tokens.output;
+                root.turnFinishedTokens = Object.values(root.turnTokensByMessage).reduce((a, b) => a + b, 0);
+                root.turnStreamChars = 0;
+            }
             if (tokens && props.info.role === "assistant") {
                 root.tokenCount.input = (tokens.input ?? 0) + (tokens.cache?.read ?? 0);
                 root.tokenCount.output = tokens.output ?? 0;
@@ -410,6 +537,8 @@ Singleton {
             root.showTodos(props.todos ?? []);
         } else if (type === "session.status") {
             root.agentBusy = props.status?.type === "busy";
+            if (root.agentBusy && !root.turnStartedAt) root.turnStartedAt = Date.now();
+            root.refreshLive();
         } else if (type === "session.idle") {
             root.agentBusy = false;
             root.waitingForUser = false;
@@ -420,6 +549,17 @@ Singleton {
                     message.finishedAt = Date.now();
                 }
             }
+            for (const id of root.messageIDs) root.messageByID[id].queued = false;
+            if (root.turnStartedAt > 0 && !root.turnInterrupted) {
+                const now = Date.now();
+                root.appendMarker("turnend", { durationMs: now - root.turnStartedAt, outputTokens: root.liveOutputTokens, doneAt: now });
+            }
+            root.turnStartedAt = 0;
+            root.turnInterrupted = false;
+            root.turnTokensByMessage = ({});
+            root.turnFinishedTokens = 0;
+            root.turnStreamChars = 0;
+            root.refreshLive();
             root.responseFinished();
         } else if (type === "session.error") {
             root.agentBusy = false;
@@ -428,8 +568,10 @@ Singleton {
     }
 
     function showTodos(items) {
-        for (const id of root.messageIDs) {
-            if (root.messageByID[id].partType === "todo") root.messageByID[id].visibleToUser = false;
+        if (root.todoMessage) {
+            root.todoMessage.todos = items;
+            root.todoMessage.visibleToUser = items.length > 0;
+            return;
         }
         if (!items.length) return;
         const message = root.aiMessageComponent.createObject(root, {
@@ -438,16 +580,25 @@ Singleton {
         const id = root.idForMessage(message);
         root.messageByID[id] = message;
         root.messageIDs = [...root.messageIDs, id];
+        root.todoMessage = message;
     }
 
     function syncAgentHistory(done) {
         opencode.messages((items, ok) => {
             if (!ok || !Array.isArray(items)) { if (done) done(); return; }
             root.clearMessages();
+            // Rebuild the turn-end lines: one per user turn whose last assistant message has completed.
+            let turn = null;
+            const closeTurn = () => {
+                if (turn && turn.doneAt > 0) root.appendMarker("turnend", { durationMs: turn.doneAt - turn.startedAt, outputTokens: turn.tokens, doneAt: turn.doneAt });
+                turn = null;
+            };
             for (const item of items) {
                 const info = item.info;
                 root.messageRoles[info.id] = info.role;
                 if (info.role === "user") {
+                    closeTurn();
+                    turn = { startedAt: info.time?.created ?? 0, doneAt: 0, tokens: 0 };
                     const content = (item.parts ?? []).filter(p => p.type === "text").map(p => p.text ?? "").join("\n");
                     root.addMessage(content, "user");
                     root.userMessageIDs = [...root.userMessageIDs, { id: info.id, text: content }];
@@ -459,7 +610,12 @@ Singleton {
                     root.tokenCount.output = info.tokens.output ?? 0;
                     root.tokenCount.total = root.tokenCount.input;
                 }
+                if (info.role === "assistant" && turn) {
+                    turn.doneAt = info.time?.completed ?? 0;
+                    turn.tokens += info.tokens?.output ?? 0;
+                }
             }
+            closeTurn();
             root.syncPendingRequests();
             if (done) done();
         });
@@ -493,12 +649,23 @@ Singleton {
         Config.options.ai.agentDirectory = normalized;
         const recent = Config.options.ai.recentDirectories ?? [];
         Config.options.ai.recentDirectories = [normalized, ...recent.filter(p => p !== normalized)].slice(0, 12);
-        root.addMessage(`⎿ cwd: ${normalized}`, root.interfaceRole);
     }
     function rewind(messageID) { opencode.revert(messageID, (data, ok) => { if (ok) root.syncAgentHistory(); else root.addMessage("⎿ rewind failed", root.interfaceRole); }); }
     function unrevert() { opencode.unrevert((data, ok) => { if (ok) root.syncAgentHistory(); else root.addMessage("⎿ unrevert failed", root.interfaceRole); }); }
     function compact() { opencode.summarize(root.requestModelName(root.getModel()), (data, ok) => root.addMessage(ok ? "⎿ context compacted" : "⎿ compact failed", root.interfaceRole)); }
-    function stop() { if (root.frontierRunning) frontierProc.signal(15); else if (root.effectiveMode === "agent") { opencode.abort(); root.agentBusy = false; } else requester.running = false; }
+    function stop() {
+        if (root.frontierRunning) frontierProc.signal(15);
+        else if (root.effectiveMode === "agent") {
+            const wasBusy = root.agentBusy || root.turnStartedAt > 0;
+            opencode.abort();
+            root.agentBusy = false;
+            if (wasBusy) {
+                root.turnInterrupted = true;
+                root.appendMarker("interrupted", {});
+                root.refreshLive();
+            }
+        } else requester.running = false;
+    }
     function fetchTodos() { opencode.todos((items, ok) => { if (ok) root.showTodos(items); }); }
     function showPermissions() {
         opencode.pendingPermissions((pending, ok) => {
@@ -705,7 +872,6 @@ Singleton {
                 return;
             }
             if (setPersistentState) Persistent.states.ai.model = modelId;
-            if (feedback) root.addMessage(Translation.tr("Model set to %1").arg(model.name), root.interfaceRole);
             if (model.requires_key) {
                 // If key not there show advice
                 if (root.apiKeysLoaded && (!root.apiKeys[model.key_id] || root.apiKeys[model.key_id].length === 0)) {
@@ -723,7 +889,6 @@ Singleton {
             return;
         }
         root.effort = level; // breaks the binding to the default, on purpose
-        root.addMessage(Translation.tr("Effort set to %1").arg(level), root.interfaceRole);
     }
 
     // Model name to send: the model's `efforts` entry for the current effort, if any.
@@ -820,7 +985,6 @@ Singleton {
         }
         Persistent.states.ai.temperature = value;
         root.temperature = value;
-        root.addMessage(Translation.tr("Temperature set to %1").arg(value), Ai.interfaceRole);
     }
 
     function setApiKey(key) {
@@ -870,6 +1034,9 @@ Singleton {
         root.frontierPending = false;
         root.waitingForUser = false;
         root.childSessions = ({});
+        root.childToolSeen = ({});
+        root.todoMessage = null;
+        root.lastPartMessage = null;
     }
 
     FileView {
@@ -1045,9 +1212,19 @@ PY
         if (message.length === 0) return;
         if (root.effectiveMode === "agent") {
             const send = () => {
+                const wasBusy = root.agentBusy;
                 root.addMessage(message, "user");
+                root.messageByID[root.messageIDs[root.messageIDs.length - 1]].queued = wasBusy;
                 root.userMessageIDs = [...root.userMessageIDs, { id: "", text: message }];
                 root.agentBusy = true;
+                if (!wasBusy) {
+                    root.turnStartedAt = Date.now();
+                    root.turnTokensByMessage = ({});
+                    root.turnFinishedTokens = 0;
+                    root.turnStreamChars = 0;
+                    root.turnInterrupted = false;
+                }
+                root.refreshLive();
                 root.lastAgentActivityAt = Date.now();
                 const agent = root.planNext ? "plan" : root.acceptEdits ? "local-accept" : "";
                 root.planNext = false;

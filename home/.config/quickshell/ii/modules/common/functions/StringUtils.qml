@@ -51,7 +51,9 @@ Singleton {
      * @returns {Array<{type: "text" | "think" | "code", content: string, lang?: string, completed?: boolean}>}
      */
     function splitMarkdownBlocks(markdown) {
-        const regex = /```(\w+)?\n([\s\S]*?)```|<think>([\s\S]*?)<\/think>/g;
+        // Fences may be indented (inside a list item); strip that indent from the code lines.
+        const dedent = (code, n) => (n > 0 ? code.replace(new RegExp(`^ {0,${n}}`, "gm"), "") : code).replace(/\n$/, "");
+        const regex = /^([ \t]*)```(\w+)?[ \t]*\n([\s\S]*?)^[ \t]*```[ \t]*$|<think>([\s\S]*?)<\/think>/gm;
         /**
          * @type {{type: "text" | "think" | "code"; content: string; lang: string | undefined; completed: boolean | undefined}[]}
          */
@@ -68,20 +70,21 @@ Singleton {
                     });
                 }
             }
-            if (match[0].startsWith('```')) {
-                if (match[2] && match[2].trim()) {
+            if (/^[ \t]*```/.test(match[0])) {
+                if (match[3] && match[3].trim()) {
                     result.push({
                         type: "code",
-                        lang: match[1] || "",
-                        content: match[2],
+                        lang: match[2] || "",
+                        content: dedent(match[3], match[1].length),
+                        indent: match[1].length,
                         completed: true
                     });
                 }
             } else if (match[0].startsWith('<think>')) {
-                if (match[3] && match[3].trim()) {
+                if (match[4] && match[4].trim()) {
                     result.push({
                         type: "think",
-                        content: match[3],
+                        content: match[4],
                         completed: true
                     });
                 }
@@ -93,7 +96,7 @@ Singleton {
             const text = markdown.slice(lastIndex);
             // Check for unfinished <think> block
             const thinkStart = text.indexOf('<think>');
-            const codeStart = text.indexOf('```');
+            const codeStart = text.search(/^[ \t]*```/m);
             if (thinkStart !== -1 && (codeStart === -1 || thinkStart < codeStart)) {
                 const beforeThink = text.slice(0, thinkStart);
                 if (beforeThink.trim()) {
@@ -119,21 +122,22 @@ Singleton {
                     });
                 }
                 // Try to detect language after ```
-                const codeLangMatch = text.slice(codeStart + 3).match(/^(\w+)?\n/);
+                const fenceAt = text.indexOf('```', codeStart);
+                const indent = fenceAt - codeStart;
+                const codeLangMatch = text.slice(fenceAt + 3).match(/^(\w+)?[ \t]*\n/);
                 let lang = "";
-                let codeContentStart = codeStart + 3;
+                let codeContentStart = fenceAt + 3;
                 if (codeLangMatch) {
                     lang = codeLangMatch[1] || "";
                     codeContentStart += codeLangMatch[0].length;
-                } else if (text[codeStart + 3] === '\n') {
-                    codeContentStart += 1;
                 }
                 const codeContent = text.slice(codeContentStart);
                 if (codeContent.trim()) {
                     result.push({
                         type: "code",
                         lang,
-                        content: codeContent,
+                        content: dedent(codeContent, indent),
+                        indent: indent,
                         completed: false
                     });
                 }

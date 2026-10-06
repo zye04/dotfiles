@@ -33,4 +33,11 @@ QtObject {
     property var requestData: ({})
     property string answer: ""
     property var todos: []
+    property bool queued: false // user: sent while the agent was busy, not started yet
+    property var tools: [] // toolgroup: [{partID, tool, target, status, summary, dir, errorText}]
+    property string errorText: "" // tool: first line of the error message
+    property int toolUses: 0 // task: tool calls made by the subagent
+    property real durationMs: 0 // turnend
+    property int outputTokens: 0 // turnend
+    property real doneAt: 0 // turnend
 }

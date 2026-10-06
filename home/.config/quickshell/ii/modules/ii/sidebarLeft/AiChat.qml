@@ -324,7 +324,7 @@ except OSError:
 
         // Always scroll to bottom when user sends a message
         messageListView.followTail = true;
-        tailScroll.restart();
+        messageListView.snapToEnd();
     }
 
     Process {
@@ -372,43 +372,55 @@ except OSError:
                 vertical: true
             }
 
-            StyledListView { // Message list
+            ListView { // Message list
                 id: messageListView
                 z: 0
                 anchors.fill: parent
                 spacing: 3
-                popin: false
                 topMargin: 6
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                // Keep the tail delegates instantiated so contentHeight is exact at the end.
+                cacheBuffer: 4000
+                reuseItems: false
 
-                touchpadScrollFactor: Config.options.interactions.scrolling.touchpadScrollFactor * 1.4
-                mouseScrollFactor: Config.options.interactions.scrolling.mouseScrollFactor * 1.4
+                readonly property real touchpadScrollFactor: Config.options.interactions.scrolling.touchpadScrollFactor * 1.4
+                readonly property real mouseScrollFactor: Config.options.interactions.scrolling.mouseScrollFactor * 1.4
 
+                // Append-only feel: while following, contentY is pinned to the end synchronously
+                // (no animation, no forceLayout). Only user-initiated scrolling animates.
                 property bool followTail: true
-                function scrollBy(delta) {
-                    const end = Math.max(originY, originY + contentHeight - height);
-                    const next = Math.max(originY, Math.min(contentY + delta, end));
-                    followTail = delta >= 0 && next >= end - 1;
-                    contentY = next;
+                // A function, not a binding: a binding re-evaluates after originY's change handlers have already run, so it lags
+                function endY() { return Math.max(originY - topMargin, originY + contentHeight - height + bottomMargin); }
+                function snapToEnd() {
+                    jumpAnim.stop();
+                    contentY = endY();
                 }
-                onContentHeightChanged: if (followTail) tailScroll.restart()
-                onHeightChanged: if (followTail) tailScroll.restart()
+                function scrollBy(delta) {
+                    const base = jumpAnim.running ? jumpAnim.to : contentY;
+                    const next = Math.max(originY - topMargin, Math.min(base + delta, endY()));
+                    followTail = delta >= 0 && next >= endY() - 1;
+                    jumpAnim.stop();
+                    jumpAnim.from = contentY;
+                    jumpAnim.to = next;
+                    jumpAnim.start();
+                }
+                NumberAnimation {
+                    id: jumpAnim
+                    target: messageListView
+                    property: "contentY"
+                    duration: 120
+                    easing.type: Easing.OutCubic
+                }
+                onContentHeightChanged: if (followTail) snapToEnd()
+                onOriginYChanged: if (followTail) snapToEnd()
+                onHeightChanged: if (followTail) snapToEnd()
                 onCountChanged: {
                     if (count === 0) followTail = true;
-                    if (followTail) tailScroll.restart();
+                    if (followTail) snapToEnd();
                 }
-                onMovementStarted: followTail = false
-                onMovementEnded: followTail = atYEnd
-                onAtYEndChanged: if (atYEnd) followTail = true
-
-                Timer {
-                    id: tailScroll
-                    interval: 0
-                    onTriggered: {
-                        if (!messageListView.followTail) return;
-                        messageListView.forceLayout();
-                        messageListView.positionViewAtEnd();
-                    }
-                }
+                onMovementStarted: { jumpAnim.stop(); followTail = false; }
+                onMovementEnded: followTail = contentY >= endY() - 1
                 WheelHandler {
                     target: null
                     onWheel: event => {
@@ -418,7 +430,10 @@ except OSError:
                     }
                 }
                 ScrollBar.vertical: StyledScrollBar {
-                    onPressedChanged: messageListView.followTail = !pressed && messageListView.atYEnd
+                    onPressedChanged: {
+                        if (pressed) { jumpAnim.stop(); messageListView.followTail = false; }
+                        else messageListView.followTail = messageListView.contentY >= messageListView.endY() - 1;
+                    }
                 }
 
                 add: null // Prevent function calls from being janky
@@ -433,14 +448,51 @@ except OSError:
                     required property var modelData
                     required property int index
                     property var entry: Ai.messageByID[modelData]
+                    // An assistant row with no text yet (tool-only turn, or waiting for the first token) takes no space.
+                    readonly property bool blank: entry?.role === "assistant" && (!entry?.partType?.length || entry.partType === "text")
+                        && !(entry?.content ?? "").trim() && !(entry?.rawContent ?? "").trim() && !entry?.localFilePath
                     width: messageListView.width
-                    height: item?.implicitHeight ?? 0
+                    visible: !blank
+                    height: blank ? 0 : (item?.implicitHeight ?? 0)
                     sourceComponent: !entry ? null : entry.partType === "tool" ? toolRow :
-                        entry?.partType === "permission" ? permissionRow :
-                        entry?.partType === "question" ? questionRow :
-                        entry?.partType === "todo" ? todoRow : normalRow
-                    Component { id: normalRow; AiMessage { messageIndex: index; messageData: entry; messageInputField: root.inputField } }
+                        entry.partType === "toolgroup" ? toolGroupRow :
+                        entry.partType === "turnend" ? turnEndRow :
+                        entry.partType === "interrupted" ? interruptedRow :
+                        entry.partType === "permission" ? permissionRow :
+                        entry.partType === "question" ? questionRow :
+                        entry.partType === "todo" ? todoRow : normalRow
+                    Component {
+                        id: normalRow
+                        Item {
+                            implicitHeight: message.implicitHeight + (entry?.queued ? queuedMark.implicitHeight + 2 : 0)
+                            AiMessage { id: message; messageIndex: index; messageData: entry; messageInputField: root.inputField }
+                            StyledText {
+                                id: queuedMark
+                                visible: entry?.queued ?? false
+                                anchors.top: message.bottom
+                                anchors.left: parent.left
+                                anchors.leftMargin: 34
+                                text: "queued"
+                                font.family: Appearance.font.family.monospace
+                                font.pixelSize: Ai.chatFontSize
+                                color: Appearance.colors.colSubtext
+                            }
+                        }
+                    }
                     Component { id: toolRow; MessageToolRow { messageData: entry } }
+                    Component { id: toolGroupRow; MessageToolGroup { messageData: entry } }
+                    Component {
+                        id: turnEndRow
+                        TranscriptNote {
+                            glyph: "✻"
+                            text: {
+                                const secs = Math.round((entry?.durationMs ?? 0) / 1000);
+                                const took = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
+                                return `Worked for ${took} · done ${Qt.formatDateTime(new Date(entry?.doneAt ?? 0), "hh:mm")}`;
+                            }
+                        }
+                    }
+                    Component { id: interruptedRow; TranscriptNote { glyph: "⎿"; text: "Interrupted · what should the agent do instead?" } }
                     Component { id: permissionRow; PermissionPrompt { messageData: entry } }
                     Component { id: questionRow; QuestionPrompt { messageData: entry } }
                     Component { id: todoRow; TodoBlock { messageData: entry } }
@@ -453,18 +505,24 @@ except OSError:
                 icon: "neurology"
                 title: Ai.getModel()?.name ?? Translation.tr("No model")
                 description: Translation.tr("Type / for commands\nCtrl+O expand · Ctrl+P pin · Ctrl+D detach")
+                descriptionHorizontalAlignment: Text.AlignHCenter
                 shape: MaterialShape.Shape.PixelCircle
             }
 
             ScrollToBottomButton {
                 z: 3
                 target: messageListView
+                // Shown only when the user scrolled away from the tail, never while content streams in.
+                opacity: messageListView.followTail ? 0 : 1
+                scale: messageListView.followTail ? 0.7 : 1
                 downAction: () => {
                     messageListView.followTail = true;
-                    tailScroll.restart();
+                    messageListView.snapToEnd();
                 }
             }
         }
+
+        StatusLine {}
 
         CommandMenu {
             id: commandMenu
@@ -485,6 +543,11 @@ except OSError:
                 messageInputField.cursorPosition = plan.length;
                 messageInputField.forceActiveFocus();
             }
+            function onInputTextRequested(text) {
+                messageInputField.text = text;
+                messageInputField.cursorPosition = text.length;
+            }
+            function onCommandRequested(text) { root.handleInput(text); }
         }
 
         PermissionPrompt {
@@ -719,6 +782,8 @@ except OSError:
                 ]
 
                 RowLayout {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
                     // Orb · model · reasoning (click to cycle) · context used (dim).
                     // The orb (13 px) and the 10 px bullet column of the messages share
                     // their centre: commandButtonsRow leftMargin is set from it below.
@@ -749,7 +814,17 @@ except OSError:
                     }
                     StyledText {
                         visible: Ai.effectiveMode === "agent"
-                        text: "· " + Ai.agentDirectory.split("/").filter(Boolean).pop()
+                        text: "·"
+                        font.family: Appearance.font.family.monospace
+                        font.pixelSize: Ai.chatFontSize
+                        color: Appearance.colors.colSubtext
+                    }
+                    StyledText { // The only segment that shrinks: middle-elided before anything else clips
+                        visible: Ai.effectiveMode === "agent"
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        elide: Text.ElideMiddle
+                        text: Ai.agentDirectory.split("/").filter(Boolean).pop()
                         font.family: Appearance.font.family.monospace
                         font.pixelSize: Ai.chatFontSize
                         color: Appearance.colors.colSubtext
@@ -761,7 +836,7 @@ except OSError:
                         color: Appearance.colors.colSubtext
                     }
                     StyledText {
-                        text: Translation.tr("reasoning: %1").arg(Ai.effort)
+                        text: commandButtonsRow.width < 600 ? Ai.effort : Translation.tr("reasoning: %1").arg(Ai.effort)
                         font.family: Appearance.font.family.monospace
                         font.pixelSize: Ai.chatFontSize
                         color: reasoningMouse.containsMouse ? Appearance.colors.colOnLayer2 : Appearance.colors.colSubtext
@@ -804,25 +879,6 @@ except OSError:
                             text: Translation.tr("Context used by this conversation\nInput: %1 · Output: %2").arg(Ai.tokenCount.input).arg(Ai.tokenCount.output)
                         }
                     }
-                    StyledText {
-                        visible: Ai.effectiveMode === "agent" && Ai.acceptEdits
-                        text: "·"
-                        font.family: Appearance.font.family.monospace
-                        font.pixelSize: Ai.chatFontSize
-                        color: Appearance.colors.colSubtext
-                    }
-                    StyledText {
-                        visible: Ai.effectiveMode === "agent" && Ai.acceptEdits
-                        text: "⏵⏵ accept edits"
-                        font.family: Appearance.font.family.monospace
-                        font.pixelSize: Ai.chatFontSize
-                        color: Appearance.colors.colSubtext
-                        opacity: 0.8
-                    }
-                }
-
-                Item {
-                    Layout.fillWidth: true
                 }
 
                 Row {
@@ -870,6 +926,19 @@ except OSError:
                     }
                 }
             }
+        }
+
+        StyledText { // Mode hint: one fixed slot under the input, empty in the default mode
+            Layout.fillWidth: true
+            Layout.leftMargin: 8
+            elide: Text.ElideRight
+            Layout.preferredHeight: modeHintMetrics.height
+            FontMetrics { id: modeHintMetrics; font.family: Appearance.font.family.monospace; font.pixelSize: Ai.chatFontSize }
+            text: Ai.effectiveMode !== "agent" ? "" : Ai.planNext ? "⏸ plan mode on" :
+                Ai.acceptEdits ? "⏵⏵ accept edits on (shift+tab to cycle)" : ""
+            font.family: Appearance.font.family.monospace
+            font.pixelSize: Ai.chatFontSize
+            color: Appearance.colors.colSubtext
         }
     }
 }

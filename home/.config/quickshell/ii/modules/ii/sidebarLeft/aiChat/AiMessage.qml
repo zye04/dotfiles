@@ -6,6 +6,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
+import "Markdown.js" as Markdown
 
 // local-suite: Claude Code-style message. No card or header:
 // - user:      tinted row with a "›" prefix
@@ -53,15 +54,6 @@ Item {
 
     function plainText() {
         return (root.messageData?.rawContent ?? "").replace(/<think>[\s\S]*?<\/think>\s*/g, "").trim();
-    }
-
-    function footerText() {
-        const m = root.messageData;
-        if (!m?.done || !m.finishedAt || !m.startedAt) return "";
-        const secs = ((m.finishedAt - m.startedAt) / 1000).toFixed(1);
-        const speed = m.tokensPerSecond > 0 ? ` · ${Math.round(m.tokensPerSecond)} tok/s` : "";
-        const clock = Qt.formatTime(new Date(m.finishedAt), "hh:mm");
-        return `∗ ${secs}s${speed} · ${clock}`;
     }
 
     Timer {
@@ -137,12 +129,13 @@ Item {
             ColumnLayout {
                 Layout.alignment: Qt.AlignTop
                 Layout.fillWidth: true
-                spacing: 0
+                spacing: readingMetrics.height // one blank line between blocks
                 onImplicitHeightChanged: root.updateFirstLineCenter()
                 opacity: root.isUser || root.isAssistant ? 1 : 0.75
 
                 Loader { // Attached image
                     Layout.fillWidth: true
+                    visible: active
                     active: root.messageData?.localFilePath && root.messageData?.localFilePath.length > 0
                     sourceComponent: AttachedFileIndicator {
                         filePath: root.messageData?.localFilePath
@@ -177,6 +170,7 @@ Item {
                             enableMouseSelection: true
                             segmentContent: modelData.content
                             segmentLang: modelData.lang
+                            indentCols: Markdown.context(root.messageBlocks, index).col
                             messageData: root.messageData
                         } }
                         DelegateChoice { roleValue: "think"; MessageThinkBlock {
@@ -190,19 +184,11 @@ Item {
                             enableMouseSelection: true
                             renderMarkdown: !root.isUser
                             segmentContent: modelData.content
+                            listContext: root.isUser ? [] : Markdown.context(root.messageBlocks, index).stack
                             messageData: root.messageData
                             done: root.messageData?.done ?? false
-                            forceDisableChunkSplitting: root.messageData?.content.includes("```") ?? true
                         } }
                     }
-                }
-
-                StyledText { // Footer (assistant only)
-                    visible: root.isAssistant && (text.length > 0 || root.copiedFlash)
-                    text: root.copiedFlash ? Translation.tr("∗ copied") : root.footerText()
-                    font.family: Appearance.font.family.monospace
-                    font.pixelSize: Ai.chatFontSize
-                    color: Appearance.colors.colSubtext
                 }
             }
         }

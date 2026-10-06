@@ -7,8 +7,8 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// local-suite: Claude Code-style reasoning line. A dim "∗ Thought for 2.1s" (or
-// "∗ Thinking…") in the same font and padding as the message text; click to show
+// local-suite: Claude Code-style reasoning line. A dim "✻ Thought for 2.1s" (or
+// "✻ Thinking…") in the same font and padding as the message text; click to show
 // the reasoning, indented and dimmed.
 Item {
     id: root
@@ -27,11 +27,16 @@ Item {
     Layout.fillWidth: true
     implicitHeight: columnLayout.implicitHeight
 
+    // Agent reasoning parts arrive already closed while still streaming, so they are
+    // finished only once the part itself is done.
+    readonly property bool finished: root.completed && (root.messageData?.partType !== "reasoning" || root.done)
+
     function headerText() {
-        if (!root.completed) return Translation.tr("∗ Thinking…");
+        if (!root.finished) return Translation.tr("✻ Thinking…");
         const m = root.messageData;
-        const secs = (m?.thoughtEndedAt > 0 && m?.startedAt > 0) ? ((m.thoughtEndedAt - m.startedAt) / 1000).toFixed(1) : "";
-        const label = secs.length > 0 ? Translation.tr("∗ Thought for %1s").arg(secs) : Translation.tr("∗ Thought");
+        const end = m?.thoughtEndedAt > 0 ? m.thoughtEndedAt : m?.finishedAt;
+        const secs = (end > 0 && m?.startedAt > 0) ? ((end - m.startedAt) / 1000).toFixed(1) : "";
+        const label = secs.length > 0 ? Translation.tr("✻ Thought for %1s").arg(secs) : Translation.tr("✻ Thought");
         return label + (root.collapsed ? "  ▸" : "  ▾");
     }
 
@@ -44,6 +49,8 @@ Item {
         TextArea { // Same control as the message text, so line height and padding match
             id: header
             Layout.fillWidth: true
+            topPadding: 0
+            bottomPadding: 0
             readOnly: true
             selectByMouse: false
             background: null
@@ -51,12 +58,12 @@ Item {
             renderType: Text.NativeRendering
             font.family: Appearance.font.family.monospace
             font.pixelSize: Ai.chatFontSize
-            color: headerMouse.containsMouse && root.completed ? Appearance.colors.colOnLayer1 : Appearance.colors.colSubtext
+            color: headerMouse.containsMouse && root.finished ? Appearance.colors.colOnLayer1 : Appearance.colors.colSubtext
 
             MouseArea {
                 id: headerMouse
                 anchors.fill: parent
-                enabled: root.completed
+                enabled: root.finished
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.collapsed = !root.collapsed

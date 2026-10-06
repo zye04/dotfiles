@@ -23,108 +23,21 @@ ColumnLayout {
     property var displayLang: (isCommandRequest ? "bash" : segmentLang)
 
     property real codeBlockBackgroundRounding: Appearance.rounding.small
-    property real codeBlockHeaderPadding: 3
-    property real codeBlockComponentSpacing: 2
 
-    spacing: codeBlockComponentSpacing
-
-    Rectangle { // Code background
-        Layout.fillWidth: true
-        topLeftRadius: codeBlockBackgroundRounding
-        topRightRadius: codeBlockBackgroundRounding
-        bottomLeftRadius: Appearance.rounding.unsharpen
-        bottomRightRadius: Appearance.rounding.unsharpen
-        color: Appearance.colors.colSurfaceContainerHighest
-        implicitHeight: codeBlockTitleBarRowLayout.implicitHeight + codeBlockHeaderPadding * 2
-
-        RowLayout { // Language and buttons
-            id: codeBlockTitleBarRowLayout
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.leftMargin: codeBlockHeaderPadding
-            anchors.rightMargin: codeBlockHeaderPadding
-            spacing: 5
-
-            StyledText {
-                id: codeBlockLanguage
-                Layout.alignment: Qt.AlignLeft
-                Layout.fillWidth: false
-                Layout.topMargin: 7
-                Layout.bottomMargin: 7
-                Layout.leftMargin: 10
-                font.family: Appearance.font.family.monospace
-                font.pixelSize: Ai.chatFontSize
-                font.weight: Font.DemiBold
-                color: Appearance.colors.colOnLayer2
-                text: root.displayLang ? Repository.definitionForName(root.displayLang).name : "plain"
-            }
-
-            Item { Layout.fillWidth: true }
-
-            ButtonGroup {
-                AiMessageControlButton {
-                    id: copyCodeButton
-                    buttonIcon: activated ? "inventory" : "content_copy"
-
-                    onClicked: {
-                        Quickshell.clipboardText = segmentContent
-                        copyCodeButton.activated = true
-                        copyIconTimer.restart()
-                    }
-
-                    Timer {
-                        id: copyIconTimer
-                        interval: 1500
-                        repeat: false
-                        onTriggered: {
-                            copyCodeButton.activated = false
-                        }
-                    }
-                    StyledToolTip {
-                        text: Translation.tr("Copy code")
-                    }
-                }
-                AiMessageControlButton {
-                    id: saveCodeButton
-                    buttonIcon: activated ? "check" : "save"
-
-                    onClicked: {
-                        const downloadPath = FileUtils.trimFileProtocol(Directories.downloads)
-                        Quickshell.execDetached(["bash", "-c", 
-                            `echo '${StringUtils.shellSingleQuoteEscape(segmentContent)}' > '${downloadPath}/code.${segmentLang || "txt"}'`
-                        ])
-                        Quickshell.execDetached(["notify-send", 
-                            Translation.tr("Code saved to file"), 
-                            Translation.tr("Saved to %1").arg(`${downloadPath}/code.${segmentLang || "txt"}`),
-                            "-a", "Shell"
-                        ])
-                        saveCodeButton.activated = true
-                        saveIconTimer.restart()
-                    }
-
-                    Timer {
-                        id: saveIconTimer
-                        interval: 1500
-                        repeat: false
-                        onTriggered: {
-                            saveCodeButton.activated = false
-                        }
-                    }
-                    StyledToolTip {
-                        text: Translation.tr("Save to Downloads")
-                    }
-                }
-            }
-        }
+    spacing: 0
+    // local-suite: no header bar. A subtle tint; language and copy/save show dim on hover only.
+    property real indentCols: 0 // list-item indent, in characters
+    Layout.leftMargin: indentCols * charMetrics.advanceWidth("0")
+    FontMetrics {
+        id: charMetrics
+        font.family: Appearance.font.family.monospace
+        font.pixelSize: Ai.chatFontSize
     }
+    HoverHandler { id: hover }
 
     Rectangle { // Code background
         Layout.fillWidth: true
-        topLeftRadius: Appearance.rounding.unsharpen
-        bottomLeftRadius: codeBlockBackgroundRounding
-        topRightRadius: Appearance.rounding.unsharpen
-        bottomRightRadius: codeBlockBackgroundRounding
+        radius: codeBlockBackgroundRounding
         color: Appearance.colors.colLayer2
         implicitHeight: codeColumnLayout.implicitHeight
 
@@ -135,6 +48,7 @@ ColumnLayout {
             TextArea { // Code
                 id: codeTextArea
                 Layout.fillWidth: true
+                padding: 8
                 readOnly: !editing
                 selectByMouse: enableMouseSelection || editing
                 renderType: Text.NativeRendering
@@ -201,6 +115,80 @@ ColumnLayout {
                             onClicked: Ai.approveCommand(root.messageData)
                         }
                     }
+                }
+            }
+        }
+
+        Row { // Language label and copy/save, dim, on hover only
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.margins: 4
+            spacing: 6
+            opacity: hover.hovered ? 1 : 0
+            visible: opacity > 0
+            Behavior on opacity {
+                animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+            }
+
+            StyledText {
+                anchors.verticalCenter: parent.verticalCenter
+                font.family: Appearance.font.family.monospace
+                font.pixelSize: Ai.chatFontSize
+                color: Appearance.colors.colSubtext
+                text: root.displayLang ? Repository.definitionForName(root.displayLang).name : "plain"
+            }
+            MaterialSymbol {
+                id: copyIcon
+                property bool activated: false
+                text: activated ? "inventory" : "content_copy"
+                iconSize: Appearance.font.pixelSize.large
+                color: copyMouse.containsMouse ? Appearance.colors.colOnLayer2 : Appearance.colors.colSubtext
+                MouseArea {
+                    id: copyMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        Quickshell.clipboardText = segmentContent
+                        copyIcon.activated = true
+                        copyIconTimer.restart()
+                    }
+                }
+                Timer {
+                    id: copyIconTimer
+                    interval: 1500
+                    onTriggered: copyIcon.activated = false
+                }
+            }
+            MaterialSymbol {
+                id: saveIcon
+                property bool activated: false
+                text: activated ? "check" : "save"
+                iconSize: Appearance.font.pixelSize.large
+                color: saveMouse.containsMouse ? Appearance.colors.colOnLayer2 : Appearance.colors.colSubtext
+                MouseArea {
+                    id: saveMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        const downloadPath = FileUtils.trimFileProtocol(Directories.downloads)
+                        Quickshell.execDetached(["bash", "-c",
+                            `echo '${StringUtils.shellSingleQuoteEscape(segmentContent)}' > '${downloadPath}/code.${segmentLang || "txt"}'`
+                        ])
+                        Quickshell.execDetached(["notify-send",
+                            Translation.tr("Code saved to file"),
+                            Translation.tr("Saved to %1").arg(`${downloadPath}/code.${segmentLang || "txt"}`),
+                            "-a", "Shell"
+                        ])
+                        saveIcon.activated = true
+                        saveIconTimer.restart()
+                    }
+                }
+                Timer {
+                    id: saveIconTimer
+                    interval: 1500
+                    onTriggered: saveIcon.activated = false
                 }
             }
         }

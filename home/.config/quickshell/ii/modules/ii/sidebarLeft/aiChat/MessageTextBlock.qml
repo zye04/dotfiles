@@ -10,6 +10,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Hyprland
+import "Markdown.js" as Markdown
 
 ColumnLayout {
     id: root
@@ -20,14 +21,28 @@ ColumnLayout {
     property var segmentContent: ({})
     property var messageData: {}
     property bool done: true
-    property bool forceDisableChunkSplitting: false
+    property var listContext: [] // open list items from earlier blocks of the message
 
     property list<string> renderedLatexHashes: []
     property string renderedSegmentContent: ""
     property string shownText: ""
     // local-suite: lets AiMessage centre its bullet on the first line of text
-    readonly property var firstTextItem: textLinesRepeater.count > 0 ? textLinesRepeater.itemAt(0) : null
-    property bool fadeChunkSplitting: !messageData?.partID && !forceDisableChunkSplitting && !editing && !/\n\|/.test(shownText) && Config.options.sidebar.ai.textFadeIn
+    readonly property var firstTextItem: textArea
+    readonly property bool dimmed: messageData?.thinking || messageData?.partType === "reasoning" || messageData?.role === "interface"
+    readonly property color accentColor: Appearance.colors.colPrimary
+    readonly property color dimColor: Appearance.colors.colSubtext
+    readonly property color bodyColor: dimmed ? dimColor
+        : Appearance.m3colors.darkmode ? Qt.lighter(Appearance.m3colors.m3onSurface, 1.12) : Appearance.m3colors.m3onSurface
+    FontMetrics {
+        id: metrics
+        font.family: Appearance.font.family.monospace
+        font.pixelSize: Ai.chatFontSize
+    }
+    readonly property string richText: Markdown.render(shownText, {
+        cw: metrics.advanceWidth("0"), gap: Math.round(metrics.height),
+        code: String(accentColor), link: String(accentColor), dim: String(dimColor),
+        rule: String(Qt.alpha(dimColor, 0.5))
+    }, listContext).html
 
     Layout.fillWidth: true
 
@@ -111,86 +126,42 @@ ColumnLayout {
     }
 
     spacing: 0
-    Repeater {
-        id: textLinesRepeater
-        property list<real> textLineOpacities: []
-        model: ScriptModel {
-            // Split by either double newlines or single newlines in a list
-            values: root.fadeChunkSplitting ? root.shownText.split(/\n\n(?= {0,2})|\n(?= {0,2}[-\*])/g).filter(line => line.trim() !== "") : [root.shownText]
-            onValuesChanged: {
-                while (textLinesRepeater.textLineOpacities.length < values.length) {
-                    textLinesRepeater.textLineOpacities.push(root.messageData.done ? 1 : 0);
-                }
-            }
+    TextArea {
+        id: textArea
+        Layout.fillWidth: true
+        topPadding: 0
+        bottomPadding: 0
+        background: null
+        palette.link: root.accentColor
+        readOnly: !editing
+        selectByMouse: enableMouseSelection || editing
+        renderType: Text.NativeRendering
+        font.family: Appearance.font.family.monospace
+        font.hintingPreference: Font.PreferNoHinting // Prevent weird bold text
+        font.pixelSize: Ai.chatFontSize
+        selectedTextColor: Appearance.m3colors.m3onSecondaryContainer
+        selectionColor: Appearance.colors.colSecondaryContainer
+        wrapMode: TextEdit.Wrap
+        color: root.bodyColor
+        textFormat: renderMarkdown && !editing ? TextEdit.RichText : TextEdit.PlainText
+        text: renderMarkdown && !editing ? root.richText : root.shownText
+
+        onTextChanged: {
+            if (!root.editing) return
+            segmentContent = text
         }
-        delegate: TextArea {
-            id: textArea
-            required property int index
-            required property string modelData
 
-            // Fade in animation
-            visible: opacity > 0
-            opacity: fadeChunkSplitting ? (textLinesRepeater.textLineOpacities[index] ?? (root.messageData.done ? 1 : 0)) : 1
-            Connections {
-                target: root.messageData
-                function onDoneChanged() {
-                    if (root.messageData.done) {
-                        textLinesRepeater.textLineOpacities[textArea.index] = 1
-                    }
-                }
-            }
-            Connections {
-                target: textLinesRepeater.model
-                function onValuesChanged() {
-                    if (textLinesRepeater.model.values.length > textArea.index + 1) {
-                        textLinesRepeater.textLineOpacities[textArea.index] = 1
-                    }
-                }
-            }
-            Behavior on opacity {
-                animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
-            }
+        onLinkActivated: (link) => {
+            Qt.openUrlExternally(link)
+            GlobalStates.sidebarLeftOpen = false
+        }
 
-            Layout.fillWidth: true
-            readOnly: !editing
-            selectByMouse: enableMouseSelection || editing
-            renderType: Text.NativeRendering
-            font.family: Appearance.font.family.monospace
-            font.hintingPreference: Font.PreferNoHinting // Prevent weird bold text
-            font.pixelSize: Ai.chatFontSize
-            selectedTextColor: Appearance.m3colors.m3onSecondaryContainer
-            selectionColor: Appearance.colors.colSecondaryContainer
-            wrapMode: TextEdit.Wrap
-            color: root.messageData?.thinking || root.messageData?.partType === "reasoning" || root.messageData?.role === "interface"
-                ? Appearance.colors.colSubtext
-                : Appearance.m3colors.darkmode ? Qt.lighter(Appearance.m3colors.m3onSurface, 1.12) : Appearance.m3colors.m3onSurface
-            textFormat: renderMarkdown ? TextEdit.MarkdownText : TextEdit.PlainText
-            text: modelData
-
-            onTextChanged: {
-                if (!root.editing) return
-                segmentContent = text
-            }
-
-            onLinkActivated: (link) => {
-                Qt.openUrlExternally(link)
-                GlobalStates.sidebarLeftOpen = false
-            }
-
-            MouseArea { // Pointing hand for links
-                anchors.fill: parent
-                acceptedButtons: Qt.NoButton // Only for hover
-                hoverEnabled: true
-                cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : 
-                    (enableMouseSelection || editing) ? Qt.IBeamCursor : Qt.ArrowCursor
-            }
-
-            // Rectangle {
-            //     anchors.fill: parent
-            //     color: "#22786378"
-            //     border.width: 1
-            //     border.color: "#7E7E7E"
-            // }
+        MouseArea { // Pointing hand for links
+            anchors.fill: parent
+            acceptedButtons: Qt.NoButton // Only for hover
+            hoverEnabled: true
+            cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor :
+                (enableMouseSelection || editing) ? Qt.IBeamCursor : Qt.ArrowCursor
         }
     }
 }

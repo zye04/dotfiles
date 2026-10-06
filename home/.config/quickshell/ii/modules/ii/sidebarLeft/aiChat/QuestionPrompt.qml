@@ -12,7 +12,7 @@ Item {
     property var answers: ({})
     anchors.left: parent?.left
     anchors.right: parent?.right
-    implicitHeight: row.implicitHeight + 4
+    implicitHeight: row.implicitHeight + 4 + (messageData?.done ? 0 : 8)
     focus: !messageData?.done
     Component.onCompleted: if (!messageData?.done) forceActiveFocus()
     function submit() {
@@ -22,17 +22,30 @@ Item {
     }
     Keys.onEscapePressed: Ai.rejectQuestion(root.messageData)
 
+    Rectangle {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.leftMargin: 8
+        anchors.rightMargin: 8
+        height: 2
+        visible: !root.messageData?.done
+        color: Appearance.colors.colPrimary
+    }
+
     RowLayout {
         id: row
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.leftMargin: 14
         anchors.rightMargin: 8
+        anchors.topMargin: root.messageData?.done ? 0 : 8
+        anchors.top: parent.top
         spacing: 10
-        StyledText { Layout.alignment: Qt.AlignTop; Layout.preferredWidth: 10; text: "⎿"; color: Appearance.colors.colSubtext }
+        StyledText { Layout.alignment: Qt.AlignTop; Layout.preferredWidth: 10; text: "⎿"; color: Appearance.colors.colSubtext; visible: root.messageData?.done }
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 5
+            spacing: 3
             StyledText {
                 visible: root.messageData?.done
                 text: root.messageData?.answer ?? ""
@@ -44,31 +57,37 @@ Item {
                     id: questionRow
                     required property int index
                     required property var modelData
+                    property int selectedIndex: 0
                     Layout.fillWidth: true
+                    spacing: 3
+                    StyledText {
+                        Layout.fillWidth: true
+                        text: questionRow.modelData.header ?? "Question"
+                        font.family: Appearance.font.family.monospace
+                        font.pixelSize: Ai.chatFontSize
+                        font.weight: Font.Bold
+                        color: Appearance.colors.colPrimary
+                    }
                     StyledText {
                         Layout.fillWidth: true
                         text: questionRow.modelData.question ?? ""
                         wrapMode: Text.Wrap
                         font.family: Appearance.font.family.monospace
                         font.pixelSize: Ai.chatFontSize
-                        color: Appearance.colors.colOnLayer2
+                        color: Appearance.colors.colOnLayer1
                     }
                     Repeater {
                         model: questionRow.modelData.options ?? []
-                        delegate: StyledText {
+                        delegate: PromptOption {
                             required property int index
                             required property var modelData
-                            text: `${index + 1}. ${modelData.label}${modelData.description ? " · " + modelData.description : ""}`
-                            font.family: Appearance.font.family.monospace
-                            font.pixelSize: Ai.chatFontSize
-                            color: Appearance.colors.colPrimary
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    root.answers[questionRow.index] = [modelData.label];
-                                    if (root.questions.length === 1) root.submit();
-                                }
+                            number: index + 1
+                            label: `${modelData.label}${modelData.description ? " <font color=\"" + Appearance.colors.colSubtext + "\">· " + modelData.description + "</font>" : ""}`
+                            selected: index === questionRow.selectedIndex
+                            onHovered: questionRow.selectedIndex = index
+                            onClicked: {
+                                root.answers[questionRow.index] = [modelData.label];
+                                if (root.questions.length === 1) root.submit();
                             }
                         }
                     }
@@ -76,7 +95,7 @@ Item {
                         Layout.fillWidth: true
                         visible: questionRow.modelData.custom !== false
                         placeholderText: "your answer…"
-                        color: Appearance.colors.colOnLayer2
+                        color: Appearance.colors.colOnLayer1
                         onAccepted: {
                             root.answers[questionRow.index] = [text];
                             root.submit();
@@ -89,6 +108,13 @@ Item {
                 text: "send answers ↵"
                 color: Appearance.colors.colPrimary
                 MouseArea { anchors.fill: parent; onClicked: root.submit() }
+            }
+            StyledText {
+                visible: !root.messageData?.done
+                text: "esc to skip"
+                font.family: Appearance.font.family.monospace
+                font.pixelSize: Ai.chatFontSize
+                color: Appearance.colors.colSubtext
             }
         }
     }

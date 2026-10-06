@@ -11,7 +11,6 @@ Rectangle {
     readonly property var choices: ["Run with local agent", "Edit in input", "Discard"]
     Layout.fillWidth: true
     implicitHeight: visible ? body.implicitHeight + 16 : 0
-    radius: Appearance.rounding.small
     color: Appearance.colors.colLayer2
     focus: visible
     onVisibleChanged: if (visible) { selectedIndex = 0; forceActiveFocus(); }
@@ -29,61 +28,55 @@ Rectangle {
         event.accepted = true;
     }
 
+    Rectangle {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: 2
+        color: Appearance.colors.colPrimary
+    }
+
     ColumnLayout {
         id: body
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.margins: 8
+        anchors.topMargin: 10
         spacing: 3
-        RowLayout {
+        StyledText {
+            text: "Run this plan?"
+            font.family: Appearance.font.family.monospace
+            font.pixelSize: Ai.chatFontSize
+            font.weight: Font.Bold
+            color: Appearance.colors.colPrimary
+        }
+        StyledText {
             Layout.fillWidth: true
-            spacing: 4
-            StyledText {
-                text: "Run this plan?"
-                font.family: Appearance.font.family.monospace
-                font.pixelSize: Ai.chatFontSize
-                font.weight: Font.Medium
-                color: Appearance.m3colors.m3onSurface
-            }
-            StyledText {
-                Layout.fillWidth: true
-                text: "PLAN.md in " + Ai.agentDirectory
-                elide: Text.ElideMiddle
-                maximumLineCount: 1
-                font.family: Appearance.font.family.monospace
-                font.pixelSize: Ai.chatFontSize
-                color: Appearance.colors.colSubtext
-            }
+            text: "PLAN.md in " + Ai.agentDirectory
+            elide: Text.ElideMiddle
+            maximumLineCount: 1
+            font.family: Appearance.font.family.monospace
+            font.pixelSize: Ai.chatFontSize
+            color: Appearance.colors.colSubtext
         }
         Repeater {
             model: root.choices
-            delegate: Rectangle {
-                id: choice
+            delegate: PromptOption {
                 required property int index
                 required property string modelData
-                Layout.fillWidth: true
-                implicitHeight: label.implicitHeight + 8
-                radius: Appearance.rounding.verysmall
-                color: index === root.selectedIndex ? Appearance.colors.colSecondaryContainer : "transparent"
-                StyledText {
-                    id: label
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 8
-                    text: choice.modelData
-                    font.family: Appearance.font.family.monospace
-                    font.pixelSize: Ai.chatFontSize
-                    color: Appearance.colors.colPrimary
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onEntered: root.selectedIndex = choice.index
-                    onClicked: Ai.planDecision(root.replies[choice.index])
-                }
+                number: index + 1
+                label: modelData
+                selected: index === root.selectedIndex
+                onHovered: root.selectedIndex = index
+                onClicked: Ai.planDecision(root.replies[index])
             }
+        }
+        StyledText {
+            text: "esc to cancel"
+            font.family: Appearance.font.family.monospace
+            font.pixelSize: Ai.chatFontSize
+            color: Appearance.colors.colSubtext
         }
     }
 }
