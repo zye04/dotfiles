@@ -23,6 +23,8 @@
                 "requires_key": false
             }
         ],
+        "frontierEffort": "high",
+        "frontierModel": "opus",
         "reasoningEffort": "off",
         "recentDirectories": [
             "/home/zye/agent",
@@ -175,8 +177,7 @@
             "storageWarningThreshold": 90,
             "swapWarningThreshold": 85
         },
-        "screenList": [
-        ],
+        "screenList": [],
         "showBackground": true,
         "tooltips": {
             "clickToShow": false
@@ -203,8 +204,7 @@
         "workspaces": {
             "alwaysShowNumbers": false,
             "monochromeIcons": true,
-            "numberMap": [
-            ],
+            "numberMap": [],
             "showAppIcons": true,
             "showNumberDelay": 300,
             "shown": 10,
@@ -244,8 +244,7 @@
         "height": 60,
         "hoverRegionHeight": 2,
         "hoverToReveal": true,
-        "ignoredAppRegexes": [
-        ],
+        "ignoredAppRegexes": [],
         "monochromeIcons": true,
         "pinnedApps": [
             "org.kde.dolphin",
