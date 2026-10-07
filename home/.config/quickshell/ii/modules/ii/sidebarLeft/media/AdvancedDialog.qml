@@ -2,13 +2,14 @@ import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 
 WindowDialog {
     id: root
     backgroundWidth: 400
     onDismiss: show = false
-    readonly property bool anyChanged: MediaGen.adv.steps !== null || MediaGen.adv.cfg !== null || MediaGen.adv.seed !== null
+    readonly property bool anyChanged: MediaGen.adv.steps !== null || MediaGen.adv.cfg !== null || MediaGen.adv.seed !== null || Object.keys(MediaGen.adv.models ?? {}).length > 0
     function setAdv(k, v) { const a = Object.assign({}, MediaGen.adv); a[k] = v; MediaGen.adv = a; }
 
     WindowDialogTitle { text: "Advanced" }
@@ -67,8 +68,65 @@ WindowDialog {
                 contentItem: MaterialSymbol { anchors.centerIn: parent; text: "shuffle" } StyledToolTip { text: "Back to random" } }
         }
     }
+    ColumnLayout {
+        Layout.fillWidth: true; spacing: 6
+        visible: MediaGen.modelRoles().length > 0
+        StyledText { text: "Models"; font.pixelSize: Appearance.font.pixelSize.smallie; color: Appearance.colors.colOnLayer1 }
+        Repeater {
+            model: MediaGen.modelRoles()
+            delegate: RowLayout {
+                id: mr
+                required property string modelData
+                readonly property var info: MediaGen.presets.models[modelData]
+                readonly property var keys: Object.keys(info.options)
+                readonly property string curLabel: info.options[MediaGen.modelKey(modelData)]?.label ?? MediaGen.modelKey(modelData)
+                Layout.fillWidth: true; spacing: 6
+                StyledText { text: ({ image: "Image generator", video: "Video generator", upscaler: "Upscaler", interpolation: "Frame interpolation" })[mr.modelData] ?? mr.modelData
+                             font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colSubtext }
+                Rectangle { width: 6; height: 6; radius: 3; color: Appearance.colors.colPrimary; visible: MediaGen.adv.models?.[mr.modelData] !== undefined }
+                Item { Layout.fillWidth: true }
+                StyledText { visible: mr.keys.length < 2; text: mr.curLabel; font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colOnLayer1 }
+                RippleButton {
+                    id: pill
+                    visible: mr.keys.length >= 2
+                    implicitHeight: 32; implicitWidth: pillRow.implicitWidth + 22
+                    buttonRadius: Appearance.rounding.full
+                    colBackground: Appearance.colors.colLayer2
+                    colBackgroundHover: Appearance.colors.colLayer2Hover
+                    onClicked: menu.open()
+                    contentItem: RowLayout {
+                        id: pillRow; anchors.centerIn: parent; spacing: 4
+                        StyledText { text: mr.curLabel; color: Appearance.colors.colOnLayer2; font.pixelSize: Appearance.font.pixelSize.smallie }
+                        MaterialSymbol { text: "expand_more"; iconSize: 16; color: Appearance.colors.colSubtext }
+                    }
+                    Popup {
+                        id: menu
+                        x: pill.width - width; y: pill.height + 6
+                        padding: 4
+                        background: Rectangle { radius: Appearance.rounding.small; color: Appearance.colors.colLayer2; border.width: 0
+                            StyledRectangularShadow { target: parent } }
+                        contentItem: ColumnLayout {
+                            spacing: 0
+                            Repeater {
+                                model: mr.keys
+                                delegate: RippleButton {
+                                    required property string modelData
+                                    Layout.fillWidth: true; implicitHeight: 32; implicitWidth: optText.implicitWidth + 20
+                                    buttonRadius: 8
+                                    colBackground: modelData === MediaGen.modelKey(mr.modelData) ? Appearance.colors.colSecondaryContainer : "transparent"
+                                    onClicked: { MediaGen.setModel(mr.modelData, modelData); menu.close(); }
+                                    contentItem: StyledText { id: optText; anchors { fill: parent; leftMargin: 10; rightMargin: 10 } verticalAlignment: Text.AlignVCenter
+                                                              text: mr.info.options[modelData].label; font.pixelSize: Appearance.font.pixelSize.smallie; color: Appearance.colors.colOnLayer2 }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     WindowDialogButtonRow {
-        DialogButton { buttonText: "Reset"; enabled: root.anyChanged; opacity: enabled ? 1 : 0.35; onClicked: MediaGen.adv = { steps: null, cfg: null, seed: null } }
+        DialogButton { buttonText: "Reset"; enabled: root.anyChanged; opacity: enabled ? 1 : 0.35; onClicked: MediaGen.adv = { steps: null, cfg: null, seed: null, models: {} } }
         Item { Layout.fillWidth: true }
         DialogButton { buttonText: "Done"; onClicked: root.show = false }
     }

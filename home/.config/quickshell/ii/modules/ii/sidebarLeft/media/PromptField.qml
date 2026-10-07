@@ -49,7 +49,7 @@ ColumnLayout {
                     implicitHeight: 22; implicitWidth: chip.implicitWidth + 18
                     buttonRadius: Appearance.rounding.full
                     focusPolicy: Qt.NoFocus   // keep focus in the text area so the chips stay visible
-                    onClicked: { MediaGen.prompt = C.appendSuggestion(MediaGen.prompt, modelData); area.forceActiveFocus(); area.cursorPosition = area.length; }
+                    onClicked: { const a = area, t = C.appendSuggestion(MediaGen.prompt, modelData); a.forceActiveFocus(); MediaGen.prompt = t; a.cursorPosition = a.length; }
                     contentItem: StyledText { id: chip; anchors.centerIn: parent; text: "+ " + modelData; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
                     background: Rectangle { radius: Appearance.rounding.full; color: "transparent"; border.width: 1; border.color: Appearance.colors.colOutlineVariant }
                 }
