@@ -31,7 +31,7 @@ Singleton {
     property string quality: "realistic"
     property real scale: 2.0
     property var finish: ({ upscale: true, cinematic24: true, grain: false })
-    property var adv: ({ steps: null, cfg: null, seed: null, models: ({}) })
+    property var adv: ({ steps: null, cfg: null, seed: null, models: ({}), loras: ({}) })
     property string selectedId: ""
     property bool tabVisible: false          // set by SidebarLeftContent: sidebar open and Media tab current
     property string dismissedJobId: ""
@@ -102,8 +102,11 @@ Singleton {
         const m = apiMode();
         const s = { mode: m, prompt: prompt.trim(), shape: shape, quality: quality, finish: finish, advanced: adv };
         const ov = presets?.models ? adv.models ?? {} : {};
-        const a = Object.assign({}, adv); delete a.models;
-        s.advanced = Object.keys(ov).length ? Object.assign(a, { models: ov }) : a;
+        const lo = (m === "t2v" || m === "i2v") ? adv.loras ?? {} : {};
+        const a = Object.assign({}, adv); delete a.models; delete a.loras;
+        if (Object.keys(ov).length) a.models = ov;
+        if (Object.keys(lo).length) a.loras = lo;
+        s.advanced = a;
         if (srcPath !== "") s.source = srcPath;
         if (m === "t2v" || m === "i2v") { s.length_s = lengthS; s.beats = beats.slice(0, lengthS / 5 - 1).map(b => ({ text: b.text, camera: b.camera || null })); }
         if (m === "upscale") s.scale = scale;
@@ -123,6 +126,18 @@ Singleton {
         const o = Object.assign({}, adv.models ?? {});
         if (key === presets?.models?.[role]?.default) delete o[role]; else o[role] = key;
         adv = Object.assign({}, adv, { models: o });
+    }
+    function loraKeys() {
+        const m = apiMode();
+        if (kind !== "video" || (m !== "t2v" && m !== "i2v")) return [];
+        return Object.keys(presets?.models?.video?.options?.[modelKey("video")]?.loras ?? {});
+    }
+    function loraDefault(key) { return presets?.video?.[quality]?.loras?.[key]; }
+    function loraValue(key) { return adv.loras?.[key] ?? loraDefault(key) ?? 1; }
+    function setLora(key, v) {
+        const o = Object.assign({}, adv.loras ?? {}), r = Math.round(v * 20) / 20;
+        if (r === loraDefault(key)) delete o[key]; else o[key] = r;
+        adv = Object.assign({}, adv, { loras: o });
     }
     function setLength(s) {
         lengthS = s;
@@ -148,8 +163,9 @@ Singleton {
         kind = item.kind === "video" ? "video" : "image";
         if (sp.length_s) setLength(sp.length_s);
         if (sp.beats) beats = sp.beats.map(b => ({ text: b.text, camera: b.camera ?? "" }));
-        adv = { steps: sp.advanced?.steps ?? null, cfg: sp.advanced?.cfg ?? null, seed: item.seed ?? null, models: {} };
+        adv = { steps: sp.advanced?.steps ?? null, cfg: sp.advanced?.cfg ?? null, seed: item.seed ?? null, models: {}, loras: {} };
         for (const [role, key] of Object.entries(sp.advanced?.models ?? {})) setModel(role, key);
+        for (const [k, v] of Object.entries(sp.advanced?.loras ?? {})) setLora(k, v);
         if (sp.source) setSource(sp.source); else clearSource();
         task = sp.mode === "upscale" ? "upscale" : "edit";
         if (sp.scale) scale = sp.scale;
@@ -256,7 +272,7 @@ Singleton {
         function state(): string {
             return JSON.stringify({ server: root.state, connected: root.connected, kind: root.kind, mode: root.mode(), srcPath: root.srcPath,
                                     prompt: root.prompt, lengthS: root.lengthS, quality: root.quality, selectedId: root.selectedId,
-                                    items: root.items.length, estimate: root.fmtDuration(root.estimateS()), busy: root.busy, tabVisible: root.tabVisible, models: root.adv.models });
+                                    items: root.items.length, estimate: root.fmtDuration(root.estimateS()), busy: root.busy, tabVisible: root.tabVisible, models: root.adv.models, loras: root.adv.loras });
         }
         function submit(specJson: string): void { root._request("POST", "/jobs", JSON.parse(specJson), null); }
         function stop(): void { root.stop(); }
@@ -266,5 +282,6 @@ Singleton {
         function setPrompt(text: string): void { root.prompt = text; }
         function setLength(s: int): void { root.setLength(s); }
         function setModel(role: string, key: string): void { root.setModel(role, key); }
+        function setLora(key: string, value: real): void { root.setLora(key, value); }
     }
 }

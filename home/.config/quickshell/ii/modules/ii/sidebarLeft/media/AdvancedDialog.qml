@@ -9,8 +9,17 @@ WindowDialog {
     id: root
     backgroundWidth: 400
     onDismiss: show = false
-    readonly property bool anyChanged: MediaGen.adv.steps !== null || MediaGen.adv.cfg !== null || MediaGen.adv.seed !== null || Object.keys(MediaGen.adv.models ?? {}).length > 0
+    readonly property bool anyChanged: MediaGen.adv.steps !== null || MediaGen.adv.cfg !== null || MediaGen.adv.seed !== null || Object.keys(MediaGen.adv.models ?? {}).length > 0 || Object.keys(MediaGen.adv.loras ?? {}).length > 0
     function setAdv(k, v) { const a = Object.assign({}, MediaGen.adv); a[k] = v; MediaGen.adv = a; }
+
+    component HelpIcon: MaterialSymbol {
+        property string tip: ""
+        property bool hovered: hover.hovered
+        visible: tip !== ""
+        text: "help"; iconSize: 15; color: Appearance.colors.colSubtext
+        HoverHandler { id: hover }
+        StyledToolTip { text: parent.tip }
+    }
 
     WindowDialogTitle { text: "Advanced" }
     WindowDialogParagraph { text: "Overrides the " + MediaGen.quality + " preset for this job only." }
@@ -83,6 +92,7 @@ WindowDialog {
                 Layout.fillWidth: true; spacing: 6
                 StyledText { text: ({ image: "Image generator", video: "Video generator", upscaler: "Upscaler", interpolation: "Frame interpolation" })[mr.modelData] ?? mr.modelData
                              font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colSubtext }
+                HelpIcon { tip: mr.info.options[MediaGen.modelKey(mr.modelData)]?.help ?? "" }
                 Rectangle { width: 6; height: 6; radius: 3; color: Appearance.colors.colPrimary; visible: MediaGen.adv.models?.[mr.modelData] !== undefined }
                 Item { Layout.fillWidth: true }
                 StyledText { visible: mr.keys.length < 2; text: mr.curLabel; font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colOnLayer1 }
@@ -125,8 +135,35 @@ WindowDialog {
             }
         }
     }
+    ColumnLayout {
+        Layout.fillWidth: true; spacing: 6
+        visible: MediaGen.loraKeys().length > 0
+        StyledText { text: "LoRAs"; font.pixelSize: Appearance.font.pixelSize.smallie; color: Appearance.colors.colOnLayer1 }
+        Repeater {
+            model: MediaGen.loraKeys()
+            delegate: RowLayout {
+                id: lr
+                required property string modelData
+                readonly property var meta: MediaGen.presets.models.video.options[MediaGen.modelKey("video")].loras[modelData]
+                readonly property real val: MediaGen.loraValue(modelData)
+                Layout.fillWidth: true; spacing: 6
+                StyledText { text: lr.meta?.label ?? lr.modelData; font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colSubtext }
+                HelpIcon { tip: lr.meta?.help ?? "" }
+                Rectangle { width: 6; height: 6; radius: 3; color: Appearance.colors.colPrimary; visible: MediaGen.adv.loras?.[lr.modelData] !== undefined }
+                StyledSlider {
+                    Layout.fillWidth: true
+                    from: 0; to: 1.5; stepSize: 0.05; value: lr.val
+                    usePercentTooltip: false
+                    tooltipContent: value < 0.025 ? "off" : value.toFixed(2)
+                    onMoved: MediaGen.setLora(lr.modelData, value)
+                }
+                StyledText { Layout.preferredWidth: 32; horizontalAlignment: Text.AlignRight
+                             text: lr.val < 0.025 ? "off" : lr.val.toFixed(2); font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colOnLayer1 }
+            }
+        }
+    }
     WindowDialogButtonRow {
-        DialogButton { buttonText: "Reset"; enabled: root.anyChanged; opacity: enabled ? 1 : 0.35; onClicked: MediaGen.adv = { steps: null, cfg: null, seed: null, models: {} } }
+        DialogButton { buttonText: "Reset"; enabled: root.anyChanged; opacity: enabled ? 1 : 0.35; onClicked: MediaGen.adv = { steps: null, cfg: null, seed: null, models: {}, loras: {} } }
         Item { Layout.fillWidth: true }
         DialogButton { buttonText: "Done"; onClicked: root.show = false }
     }

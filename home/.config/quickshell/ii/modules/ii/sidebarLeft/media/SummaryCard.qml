@@ -11,7 +11,9 @@ RippleButton {
     readonly property bool isFinish: kind === "finish"
     readonly property var finishRows: [["upscale", "Upscale 2×"], ["cinematic24", "Cinematic 24 fps"], ["grain", "Film grain"]]
     readonly property var modelNotes: Object.entries(MediaGen.adv.models ?? {}).filter(e => MediaGen.presets?.models?.[e[0]]).map(e => MediaGen.presets.models[e[0]].options[e[1]]?.label?.split(" · ")[0] ?? e[1])
-    readonly property int changed: ["steps", "cfg", "seed"].filter(k => MediaGen.adv[k] !== null).length + modelNotes.length
+    readonly property var loraShort: ({ lightx2v_high: "lightx2v hi", lightx2v_low: "lightx2v lo", svi: "SVI" })
+    readonly property var loraNotes: Object.entries(MediaGen.adv.loras ?? {}).map(e => (loraShort[e[0]] ?? e[0]) + " " + (e[1] < 0.025 ? "off" : e[1].toFixed(2)))
+    readonly property int changed: ["steps", "cfg", "seed"].filter(k => MediaGen.adv[k] !== null).length + modelNotes.length + loraNotes.length
     visible: isFinish ? MediaGen.kind === "video" : (MediaGen.mode() !== "upscale" && MediaGen.mode() !== "enhance")
     implicitHeight: col.implicitHeight + 20
     buttonRadius: Appearance.rounding.normal
@@ -54,6 +56,7 @@ RippleButton {
                 + "&nbsp;&nbsp;<font color=\"" + dim + "\">strength</font> " + (MediaGen.adv.cfg ?? MediaGen.presetValue("cfg") ?? "–") + (MediaGen.adv.cfg !== null ? dot : "")
                 + "&nbsp;&nbsp;<font color=\"" + dim + "\">seed</font> " + (MediaGen.adv.seed ?? "random") + (MediaGen.adv.seed !== null ? dot : "")
                 + (root.modelNotes.length ? "<br><font color=\"" + dim + "\">model</font> " + root.modelNotes.join(", ") + dot : "")
+                + (root.loraNotes.length ? "<br><font color=\"" + dim + "\">lora</font> " + root.loraNotes.join(", ") + dot : "")
         }
     }
 }
