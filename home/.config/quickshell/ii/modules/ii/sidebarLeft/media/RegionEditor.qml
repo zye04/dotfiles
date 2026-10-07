@@ -29,16 +29,23 @@ PanelWindow {
     }
     property var lastApplied: null
     property bool applying: false
+    property int applySerial: 0
+    property bool closing: false
+    property var pendingMasks: []
 
     function prompts() { return canvas.regions.map(r => r.prompt ?? ""); }
     function stateJson() { const s = JSON.parse(canvas.stateJson()); s.prompts = prompts(); return JSON.stringify(s); }
     function cancel() {
         if (canvas.regions.some(r => r.strokes.length) && !confirmCancel) { confirmCancel = true; return; }
+        closing = true; applySerial++;
+        canvas.cancelExport();
+        canvas.discardMasks(pendingMasks); pendingMasks = [];
+        applying = false;
         MediaGen.closeRegionEditor();
     }
     function canApply() {
         rev;
-        if (applying || MediaGen.busy || !MediaGen.connected || Ai.busy) return false;
+        if (closing || applying || canvas.pendingSeeds || canvas.seedError || MediaGen.busy || !MediaGen.connected || Ai.busy) return false;
         const painted = canvas.regions.filter((r, i) => canvas.bbox(i));
         return painted.length > 0 && painted.every(r => (r.prompt ?? "").trim().length);
     }
@@ -46,19 +53,30 @@ PanelWindow {
         if (!canApply()) return;
         MediaGen.lastError = "";
         applying = true;
+        const serial = ++applySerial;
         canvas.exportMasks((list) => {
+            if (!win || closing || serial !== applySerial) { canvas.discardMasks(list); return; }
             if (!list) { applying = false; MediaGen.lastError = "Couldn't save the painted areas"; return; }
-            const regions = list.map(m => ({ mask: m.mask, box: m.box.map(Math.round), prompt: (canvas.regions[m.index]?.prompt ?? "").trim() }))
-                                .filter(r => r.prompt.length);
-            if (!regions.length) { applying = false; MediaGen.lastError = "Give each painted area a prompt"; return; }
+            const regions = list.map(m => ({ mask: m.mask, box: m.box.map(Math.round), prompt: (m.prompt ?? "").trim() }));
+            if (!regions.length || regions.some(r => !r.prompt)) {
+                canvas.discardMasks(list);
+                applying = false; MediaGen.lastError = "Give each painted area a prompt"; return;
+            }
+            pendingMasks = list;
             win.lastApplied = regions;
-            MediaGen.submitRegions(regions);
+            MediaGen.submitRegions(regions, (ok) => {
+                if (!win || closing || serial !== applySerial) return;
+                applying = false;
+                if (!ok) canvas.discardMasks(list);
+                pendingMasks = [];
+            });
         });
     }
     function handleKey(e, typing) {
         if (e.key === Qt.Key_Escape) { cancel(); return true; }
         if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && (e.modifiers & Qt.ControlModifier)) { apply(); return true; }
         if (typing) return false;
+        if (applying) return true;
         if (e.key === Qt.Key_BracketLeft) { canvas.brushSize = Math.max(4, canvas.brushSize - 8); return true; }
         if (e.key === Qt.Key_BracketRight) { canvas.brushSize = Math.min(400, canvas.brushSize + 8); return true; }
         if (e.key >= Qt.Key_1 && e.key <= Qt.Key_4) { const i = e.key - Qt.Key_1; if (i < canvas.regions.length) canvas.current = i; return true; }
@@ -73,9 +91,12 @@ PanelWindow {
         const seed = MediaGen.regionSeed;
         if (seed?.length) seed.forEach(r => canvas.addRegion(r.mask, r.box, r.prompt)); else canvas.addRegion();
     }
-    Component.onDestruction: if (MediaGen.regionEditor === win) MediaGen.regionEditor = null
-
-    Connections { target: MediaGen; function onLastErrorChanged() { if (MediaGen.lastError !== "") win.applying = false; } }
+    Component.onDestruction: {
+        closing = true; applySerial++;
+        canvas.cancelExport();
+        canvas.discardMasks(pendingMasks); pendingMasks = [];
+        if (MediaGen.regionEditor === win) MediaGen.regionEditor = null;
+    }
     Connections { target: canvas; function onChanged() { win.confirmCancel = false; } function onInteracted() { keys.forceActiveFocus(); } }
 
     Rectangle { anchors.fill: parent; color: Appearance.m3colors.m3scrim; opacity: 0.82 }
@@ -101,6 +122,7 @@ PanelWindow {
                     color: Appearance.colors.colLayer1
                     RowLayout {
                         id: toolRow
+                        enabled: !win.applying
                         anchors { verticalCenter: parent.verticalCenter; left: parent.left; leftMargin: 12 }
                         spacing: 4
                         component ToolButton: RippleButton {
@@ -148,7 +170,7 @@ PanelWindow {
 
                 Item {
                     Layout.fillWidth: true; Layout.fillHeight: true
-                    RegionCanvas { id: canvas; anchors.fill: parent; source: MediaGen.regionPath }
+                    RegionCanvas { id: canvas; anchors.fill: parent; source: MediaGen.regionPath; frozen: win.applying }
                 }
             }
 
@@ -174,6 +196,7 @@ PanelWindow {
                             required property int index
                             readonly property var reg: win.rev >= 0 ? canvas.regions[index] : null
                             readonly property bool isCurrent: canvas.current === index
+                            enabled: !win.applying
                             readonly property var box: win.rev >= 0 && reg ? reg.box : null
                             readonly property bool needsPrompt: win.rev >= 0 && !!canvas.bbox(index) && !(card.reg?.prompt ?? "").trim().length
                             readonly property bool large: !!box && (box[2] - box[0]) * (box[3] - box[1]) > win.largeAreaPx
@@ -190,7 +213,7 @@ PanelWindow {
                                 spacing: 6
                                 RowLayout {
                                     spacing: 8
-                                    Rectangle { implicitWidth: 14; implicitHeight: 14; radius: 7; color: card.reg.color }
+                                    Rectangle { implicitWidth: 14; implicitHeight: 14; radius: 7; color: card.reg?.color ?? "transparent" }
                                     StyledText { text: "Area " + (card.index + 1); font.pixelSize: Appearance.font.pixelSize.small; font.weight: Font.Medium }
                                     Item { Layout.fillWidth: true }
                                     RippleButton {
@@ -217,8 +240,8 @@ PanelWindow {
                                         color: Appearance.colors.colOnLayer2
                                         font.family: Appearance.font.family.main; font.pixelSize: Appearance.font.pixelSize.smallie
                                         selectionColor: Appearance.colors.colPrimaryContainer
-                                        text: card.reg.prompt ?? ""
-                                        onTextChanged: if (text !== (card.reg.prompt ?? "")) { card.reg.prompt = text; canvas.touch(); }
+                                        text: card.reg?.prompt ?? ""
+                                        onTextChanged: if (!win.applying && card.reg && text !== (card.reg.prompt ?? "")) { card.reg.prompt = text; canvas.touch(); }
                                         onActiveFocusChanged: if (activeFocus) canvas.current = card.index
                                         Keys.onPressed: (e) => { e.accepted = win.handleKey(e, true); }
                                         StyledText {
@@ -251,6 +274,7 @@ PanelWindow {
 
                     RippleButton {
                         visible: canvas.regions.length < 4
+                        enabled: !win.applying
                         Layout.fillWidth: true
                         implicitHeight: 36
                         buttonRadius: Appearance.rounding.small
@@ -265,6 +289,7 @@ PanelWindow {
 
                     RowLayout {
                         Layout.fillWidth: true; spacing: 6
+                        enabled: !win.applying
                         Repeater {
                             model: ["draft", "balanced", "realistic"]
                             delegate: RippleButton {
@@ -291,6 +316,12 @@ PanelWindow {
                         Layout.fillWidth: true
                         text: MediaGen.fmtDuration(win.perRegionS) + " per area" + (win.nPainted > 1 ? " · " + MediaGen.fmtDuration(win.perRegionS * win.nPainted) : "")
                         color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller
+                    }
+                    StyledText {
+                        visible: canvas.pendingSeeds > 0 || canvas.seedError !== ""
+                        text: canvas.seedError || "Loading saved areas…"
+                        color: canvas.seedError ? Appearance.m3colors.m3error : Appearance.colors.colSubtext
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
                     StyledText {
                         visible: MediaGen.lastError !== ""

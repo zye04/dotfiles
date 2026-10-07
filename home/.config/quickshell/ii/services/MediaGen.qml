@@ -164,12 +164,12 @@ Singleton {
     // User-added images: the first becomes the source, later ones (image mode only) become references.
     function addImage(path) {
         const isImg = !["mp4", "webm", "mkv", "mov"].includes(path.split(".").pop().toLowerCase());
-        if (kind === "image" && isImg && srcKind === "image" && srcPath !== "" && path !== srcPath) {
-            if (refs.length < 3 && !refs.includes(path)) refs = refs.concat([path]); else if (refs.length >= 3) lastError = "Up to 3 reference images";
+        if (path === srcPath || refs.includes(path)) return;
+        if (kind === "image" && isImg && srcKind === "image" && srcPath !== "") {
+            if (refs.length < 3) refs = refs.concat([path]); else lastError = "Up to 3 reference images";
         } else setSource(path);
     }
     function reuse(item) {
-        if (item.spec?.mode === "region") { quality = item.quality ?? quality; openRegionEditor(item.spec.source, item.spec.regions); return; }
         const sp = item.spec ?? {};
         prompt = sp.prompt ?? ""; quality = item.quality ?? quality;
         if (sp.shape) shape = sp.shape;
@@ -180,7 +180,8 @@ Singleton {
         for (const [role, key] of Object.entries(sp.advanced?.models ?? {})) setModel(role, key);
         for (const [k, v] of Object.entries(sp.advanced?.loras ?? {})) setLora(k, v);
         if (sp.source) setSource(sp.source); else clearSource();
-        refs = sp.refs ?? [];
+        refs = (sp.refs ?? []).slice();
+        if (sp.mode === "region") { openRegionEditor(sp.source, sp.regions); return; }
         task = sp.mode === "upscale" ? "upscale" : "edit";
         if (sp.scale) scale = sp.scale;
         if (sp.finish) finish = Object.assign({}, sp.finish);
@@ -191,22 +192,36 @@ Singleton {
     property var _queue: []
     function _request(method, path, body, cb) { _queue.push({ method, path, body, cb }); _next(); }
     function _next() {
-        if (rest.running || _queue.length === 0) return;
+        if (rest.running || rest.job !== null || _queue.length === 0) return;
         const j = _queue[0];
         const args = ["curl", "-sS", "--max-time", "15", "-X", j.method, "-w", "\n%{http_code}"];
         if (j.body !== null) args.push("-H", "Content-Type: application/json", "--data-binary", JSON.stringify(j.body));
         args.push(base + j.path);
+        rest.job = j; rest.started = false;
         rest.command = args; rest.running = true;
     }
     property Process rest: Process {
+        property var job: null
+        property bool started: false
+        function complete(status, data) {
+            const j = job;
+            if (!j) return;
+            job = null;
+            root._queue.shift();
+            if (j.cb) j.cb(status, data);
+            Qt.callLater(root._next);
+        }
+        onStarted: started = true
+        onRunningChanged: if (!running && !started && job) {
+            const j = job;
+            Qt.callLater(() => { if (!running && !started && job === j) complete(0, null); });
+        }
         stdout: StdioCollector { id: restOut }
         onExited: (code) => {
-            const j = root._queue.shift();
             const txt = restOut.text, nl = txt.lastIndexOf("\n");
             const status = parseInt(txt.slice(nl + 1)) || 0, body = txt.slice(0, nl);
             let data = null; try { data = JSON.parse(body); } catch (e) {}
-            if (j?.cb) j.cb(status, data);
-            root._next();
+            complete(status, data);
         }
     }
     function refreshItems(selectNewest) {
@@ -235,16 +250,22 @@ Singleton {
     function regionsDir() { return Quickshell.env("HOME") + "/.cache/local-suite/media/regions"; }
     function openRegionEditor(path, regions) { if (busy) return; lastError = ""; regionSeed = regions ?? null; regionPath = path; }
     function closeRegionEditor() { regionPath = ""; regionSeed = null; }
-    function submitRegions(regions) {
-        if (busy || !connected) return;
+    function submitRegions(regions, cb) {
+        if (busy || !connected) {
+            lastError = busy ? "A job is already running" : "The media service is disconnected";
+            if (cb) cb(false);
+            return;
+        }
         lastError = ""; dismissedJobId = "";
         const a = Object.assign({}, adv); delete a.loras;
         if (!Object.keys(a.models ?? {}).length || !presets?.models) delete a.models;
+        const editor = regionEditor, path = regionPath;
         const body = { mode: "region", source: regionPath, quality: quality, advanced: a, regions: regions };
         if (refs.length && regionPath === srcPath) body.refs = refs;
         _request("POST", "/jobs", body, (st, d) => {
-            if (st === 202) { closeRegionEditor(); return; }
+            if (st === 202) { if (cb) cb(true); if (regionEditor === editor && regionPath === path) closeRegionEditor(); return; }
             const e = d?.error; lastError = !e ? "Couldn't start the job" : e === "busy" ? "A job is already running" : typeof e === "string" ? e : JSON.stringify(e);
+            if (cb) cb(false);
         });
     }
 
