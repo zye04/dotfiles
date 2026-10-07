@@ -152,6 +152,7 @@ Scope { // Scope
 
                 Keys.onPressed: (event) => {
                     if (event.key === Qt.Key_Escape) {
+                        if (MediaGen.regionPath !== "") { MediaGen.regionEditor?.cancel(); event.accepted = true; return; }
                         panelWindow.hide();
                     }
                     if (event.modifiers === Qt.ControlModifier) {

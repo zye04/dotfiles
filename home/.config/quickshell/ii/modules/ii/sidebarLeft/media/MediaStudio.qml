@@ -10,8 +10,13 @@ Item {
     Connections {
         target: MediaGen
         function onBusyChanged() { if (MediaGen.busy) root.forceActiveFocus(); }
+        function onRegionPathChanged() { if (MediaGen.regionPath === "") root.forceActiveFocus(); }
+    }
+    Keys.onReleased: (e) => {
+        if (regionEditor.item && MediaGen.regionPath !== "" && e.key === Qt.Key_Space && !e.isAutoRepeat) { regionEditor.item.canvas.spaceHeld = false; e.accepted = true; }
     }
     Keys.onPressed: (e) => {
+        if (MediaGen.regionPath !== "") { e.accepted = regionEditor.item ? regionEditor.item.handleKey(e, regionEditor.item.promptFocus !== null) : true; return; }
         if (e.key === Qt.Key_V && (e.modifiers & Qt.ControlModifier) && !MediaGen.busy) { MediaGen.pasteSource(); e.accepted = true; }
         else if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && (e.modifiers & Qt.ControlModifier)) { MediaGen.submit(); e.accepted = true; }
         else if (e.key === Qt.Key_Escape && MediaGen.busy) { MediaGen.stop(); e.accepted = true; }
@@ -22,6 +27,7 @@ Item {
         spacing: 12
 
         ColumnLayout {
+            visible: MediaGen.regionPath === ""
             Layout.preferredWidth: 360; Layout.minimumWidth: 360; Layout.maximumWidth: 360; Layout.fillHeight: true
             spacing: 12
             StyledFlickable {
@@ -56,7 +62,22 @@ Item {
             ActionArea { Layout.fillWidth: true }
         }
 
+        Loader {
+            active: !!regionEditor.item
+            visible: active
+            Layout.preferredWidth: 360; Layout.minimumWidth: 360; Layout.maximumWidth: 360; Layout.fillHeight: true
+            sourceComponent: RegionPanel { editor: regionEditor.item }
+        }
+        Loader {
+            id: regionEditor
+            active: MediaGen.regionPath !== ""
+            visible: active
+            Layout.fillWidth: true; Layout.fillHeight: true
+            sourceComponent: RegionEditor {}
+            onLoaded: item.forceActiveFocus()
+        }
         ColumnLayout {
+            visible: MediaGen.regionPath === ""
             Layout.fillWidth: true; Layout.fillHeight: true
             spacing: 8
             Viewer { Layout.fillWidth: true; Layout.fillHeight: true }
@@ -66,7 +87,6 @@ Item {
 
     DialogHost { id: finishDialog; sourceComponent: FinishDialog {} }
     DialogHost { id: advancedDialog; sourceComponent: AdvancedDialog {} }
-    Loader { active: MediaGen.regionPath !== ""; sourceComponent: RegionEditor {} }
 
     component DialogHost: Loader {
         id: host

@@ -313,7 +313,7 @@ Item {
         id: content
         width: root.imgW; height: root.imgH
         transformOrigin: Item.TopLeft
-        readonly property real fit: root.imgW ? Math.min(root.width / root.imgW, root.height / root.imgH) * 0.96 : 1
+        readonly property real fit: root.imgW && root.imgH && root.width > 0 && root.height > 0 ? Math.min(root.width / root.imgW, root.height / root.imgH) * 0.96 : 1
         scale: fit * root.zoom
         x: (root.width - root.imgW * scale) / 2 + root.pan.x
         y: (root.height - root.imgH * scale) / 2 + root.pan.y
