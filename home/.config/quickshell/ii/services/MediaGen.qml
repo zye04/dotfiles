@@ -129,7 +129,7 @@ Singleton {
     function submit() {
         if (!canSubmit()) return;
         lastError = "";
-        _request("POST", "/jobs", buildSpec(), (st, d) => { if (st !== 202) lastError = d?.error ?? "Couldn't start the job"; });
+        _request("POST", "/jobs", buildSpec(), (st, d) => { if (st !== 202) { const e = d?.error; lastError = !e ? "Couldn't start the job" : e === "busy" ? "A job is already running" : typeof e === "string" ? e : JSON.stringify(e); } });
     }
     function stop() { _request("POST", "/stop", {}, null); }
     function retry() { _request("POST", "/retry", {}, null); }
@@ -146,11 +146,11 @@ Singleton {
                     const prev = root.state.status;
                     root.state = JSON.parse(line.slice(5));
                     root.connected = true;
-                    if ((prev === "running" || prev === "starting") && root.state.status === "idle") root.refreshItems();
+                    if ((prev === "running" || prev === "starting") && root.state.status !== "running" && root.state.status !== "starting") root.refreshItems();
                 } catch (e) {}
             }
         }
-        onExited: { root.connected = false; reconnect.start(); }
+        onExited: { root.connected = false; root.state = ({ status: "idle", stages: [], beats: [] }); reconnect.start(); }
     }
     Timer { id: reconnect; interval: 3000; onTriggered: { root.stream.running = true; root.refreshItems(); root.refreshPresets(); } }
 
