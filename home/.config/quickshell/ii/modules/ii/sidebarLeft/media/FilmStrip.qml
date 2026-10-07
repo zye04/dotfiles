@@ -22,8 +22,11 @@ ListView {
         required property var modelData
         width: 92; height: 58; radius: Appearance.rounding.small; color: Appearance.colors.colLayer1
         border.width: 2; border.color: MediaGen.selectedId === modelData.id ? Appearance.colors.colPrimary : "transparent"
-        Image { anchors { fill: parent; margins: 2 } fillMode: Image.PreserveAspectCrop; asynchronous: true; source: MediaGen.thumbUrl(modelData.id)
-                layer.enabled: true }
+        Rectangle {
+            anchors { fill: parent; margins: 2 }
+            radius: Appearance.rounding.small - 2; clip: true; color: "transparent"
+            Image { anchors.fill: parent; fillMode: Image.PreserveAspectCrop; asynchronous: true; source: MediaGen.thumbUrl(modelData.id) }
+        }
         MaterialSymbol { anchors.centerIn: parent; visible: modelData.kind === "video"; text: "play_circle"; iconSize: 22; color: "#eeffffff" }
         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: MediaGen.selectedId = modelData.id }
     }
