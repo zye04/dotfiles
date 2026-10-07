@@ -7,9 +7,13 @@ import QtQuick.Layouts
 Item {
     id: root
     focus: true
+    Connections {
+        target: MediaGen
+        function onBusyChanged() { if (MediaGen.busy) root.forceActiveFocus(); }
+    }
     Keys.onPressed: (e) => {
         if (e.key === Qt.Key_V && (e.modifiers & Qt.ControlModifier) && !MediaGen.busy) { MediaGen.pasteSource(); e.accepted = true; }
-        else if (e.key === Qt.Key_Return && (e.modifiers & Qt.ControlModifier)) { MediaGen.submit(); e.accepted = true; }
+        else if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && (e.modifiers & Qt.ControlModifier)) { MediaGen.submit(); e.accepted = true; }
         else if (e.key === Qt.Key_Escape && MediaGen.busy) { MediaGen.stop(); e.accepted = true; }
     }
 

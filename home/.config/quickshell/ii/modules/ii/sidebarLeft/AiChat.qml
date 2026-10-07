@@ -298,8 +298,7 @@ except OSError:
     function acceptSuggestion(item, run) {
         if (!item) return;
         if (run && item.run) {
-            messageInputField.clear();
-            root.handleInput(item.name);
+            if (root.handleInput(item.name)) messageInputField.clear();
             return;
         }
         messageInputField.text = item.name + " ";
@@ -308,7 +307,7 @@ except OSError:
     }
 
     function handleInput(inputText) {
-        if (MediaGen.busy) return;
+        if (MediaGen.busy) return false;
         if (inputText.startsWith(root.commandPrefix)) {
             // Handle special commands
             const command = inputText.split(" ")[0].substring(1);
@@ -326,6 +325,7 @@ except OSError:
         // Always scroll to bottom when user sends a message
         messageListView.followTail = true;
         messageListView.snapToEnd();
+        return true;
     }
 
     Process {
@@ -644,8 +644,7 @@ except OSError:
                         }
 
                         function accept() {
-                            root.handleInput(text);
-                            text = "";
+                            if (root.handleInput(text)) text = "";
                         }
 
                         Keys.onPressed: event => {
@@ -691,8 +690,7 @@ except OSError:
                                 } else {
                                     // Accept text
                                     const inputText = messageInputField.text;
-                                    messageInputField.clear();
-                                    root.handleInput(inputText);
+                                    if (root.handleInput(inputText)) messageInputField.clear();
                                     event.accepted = true;
                                 }
                             } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_V) {
@@ -744,7 +742,7 @@ except OSError:
                     implicitWidth: 40
                     implicitHeight: 40
                     buttonRadius: Appearance.rounding.small
-                    enabled: messageInputField.text.length > 0
+                    enabled: messageInputField.text.length > 0 && !MediaGen.busy
                     toggled: enabled
 
                     MouseArea {
@@ -752,8 +750,7 @@ except OSError:
                         cursorShape: sendButton.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                         onClicked: {
                             const inputText = messageInputField.text;
-                            root.handleInput(inputText);
-                            messageInputField.clear();
+                            if (root.handleInput(inputText)) messageInputField.clear();
                         }
                     }
 

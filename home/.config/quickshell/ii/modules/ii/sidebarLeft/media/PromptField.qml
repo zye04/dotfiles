@@ -29,7 +29,7 @@ ColumnLayout {
             selectionColor: Appearance.colors.colPrimaryContainer
             text: MediaGen.prompt
             onTextChanged: if (text !== MediaGen.prompt) MediaGen.prompt = text
-            Keys.onPressed: (e) => { if (e.key === Qt.Key_Return && (e.modifiers & Qt.ControlModifier)) { MediaGen.submit(); e.accepted = true; } }
+            Keys.onPressed: (e) => { if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && (e.modifiers & Qt.ControlModifier)) { MediaGen.submit(); e.accepted = true; } }
             StyledText {
                 anchors.fill: parent; visible: area.text.length === 0; wrapMode: Text.Wrap
                 text: root.copy[2]; color: Appearance.colors.colSubtext; opacity: 0.6; font.pixelSize: Appearance.font.pixelSize.smallie
