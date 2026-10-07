@@ -42,9 +42,9 @@ Item {
                     Seg {
                         visible: MediaGen.kind === "image" && MediaGen.srcPath !== ""
                         Layout.fillWidth: true
-                        model: [{ "icon": "edit", "name": "Edit" }, { "icon": "hd", "name": "Upscale" }]
+                        model: [{ "icon": "edit", "name": "Edit" }, { "icon": "hd", "name": "Upscale" }, { "icon": "brush", "name": "Region" }]
                         currentIndex: MediaGen.task === "upscale" ? 1 : 0
-                        onPicked: (i) => MediaGen.task = i === 1 ? "upscale" : "edit"
+                        onPicked: (i) => { if (i === 2) MediaGen.openRegionEditor(MediaGen.srcPath, null); else MediaGen.task = i === 1 ? "upscale" : "edit"; }
                     }
                     PromptField { Layout.fillWidth: true; Layout.minimumWidth: 0 }
                     StoryRows { Layout.fillWidth: true; Layout.minimumWidth: 0 }
@@ -66,6 +66,7 @@ Item {
 
     DialogHost { id: finishDialog; sourceComponent: FinishDialog {} }
     DialogHost { id: advancedDialog; sourceComponent: AdvancedDialog {} }
+    Loader { active: MediaGen.regionPath !== ""; sourceComponent: RegionEditor {} }
 
     component DialogHost: Loader {
         id: host

@@ -11,7 +11,7 @@ const THEN = ["then she pulls the scarf tighter, still walking", "then glances b
 const CAMERAS = ["", "static", "pan", "push_in", "handheld"];
 const CAMERA_LABEL = { "": "Camera", static: "Static", pan: "Pan", push_in: "Push in", handheld: "Handheld" };
 const ROLE = { edit: "Will be edited", upscale: "Will be upscaled", i2v: "First frame of the video", long: "First frame of the video", enhance: "Will be enhanced" };
-const BUTTON = { t2i: ["auto_awesome", "Create image"], edit: ["edit", "Edit image"], upscale: ["hd", "Upscale image"], t2v: ["videocam", "Create video"], i2v: ["movie", "Animate image"], long: ["movie", "Animate image"], enhance: ["auto_fix_high", "Enhance video"] };
+const BUTTON = { t2i: ["auto_awesome", "Create image"], edit: ["edit", "Edit image"], upscale: ["hd", "Upscale image"], t2v: ["videocam", "Create video"], i2v: ["movie", "Animate image"], long: ["movie", "Animate image"], enhance: ["auto_fix_high", "Enhance video"], region: ["brush", "Apply region edit"] };
 const SHAPES = [["16:9", "landscape"], ["9:16", "portrait"], ["1:1", "square"], ["4:5", "portrait"]];
 const LENGTHS = [[5, "one shot"], [10, "2 beats"], [20, "4 beats"], [30, "6 beats"]];
 
