@@ -11,6 +11,7 @@ ColumnLayout {
     id: root
     readonly property var item: MediaGen.selectedItem()
     readonly property bool isVideo: item?.kind === "video"
+    readonly property string compareSrc: item?.source && !/\.(mp4|webm|mkv|mov)$/i.test(item.source) ? "file://" + item.source : ""
     spacing: 8
 
     // Decode only while the Media tab is on screen.
@@ -72,7 +73,7 @@ ColumnLayout {
             Behavior on opacity { animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this) }
 
             RowLayout { anchors { top: parent.top; right: parent.right } spacing: 6
-                Glass { glyph: "compare"; visible: !!root.item?.source && !/\.(mp4|webm|mkv|mov)$/i.test(root.item.source); StyledToolTip { text: "Compare with source" }
+                Glass { glyph: "compare"; visible: root.compareSrc !== ""; StyledToolTip { text: "Compare with source" }
                         downAction: () => compareImg.visible = true; releaseAction: () => compareImg.visible = false }
                 Glass { glyph: "open_in_full"; StyledToolTip { text: "Fullscreen" }
                         onClicked: Quickshell.execDetached(["xdg-open", root.item.path]) }
@@ -98,7 +99,7 @@ ColumnLayout {
                     MouseArea { anchors.fill: parent; onClicked: audio.muted = !audio.muted } }
             }
         }
-        Image { id: compareImg; anchors.fill: parent; visible: false; fillMode: Image.PreserveAspectFit; source: root.item?.source ? "file://" + root.item.source : "" }
+        Image { id: compareImg; anchors.fill: parent; visible: false; fillMode: Image.PreserveAspectFit; source: root.compareSrc }
 
         component Entry: MenuItem {
             id: mi

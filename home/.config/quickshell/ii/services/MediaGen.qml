@@ -237,7 +237,7 @@ Singleton {
         function state(): string {
             return JSON.stringify({ server: root.state, connected: root.connected, kind: root.kind, mode: root.mode(), srcPath: root.srcPath,
                                     prompt: root.prompt, lengthS: root.lengthS, quality: root.quality, selectedId: root.selectedId,
-                                    items: root.items.length, estimate: root.fmtDuration(root.estimateS()), busy: root.busy });
+                                    items: root.items.length, estimate: root.fmtDuration(root.estimateS()), busy: root.busy, tabVisible: root.tabVisible });
         }
         function submit(specJson: string): void { root._request("POST", "/jobs", JSON.parse(specJson), null); }
         function stop(): void { root.stop(); }
