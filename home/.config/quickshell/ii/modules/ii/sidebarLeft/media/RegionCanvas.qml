@@ -23,13 +23,15 @@ Item {
     signal changed()
     clip: true
 
-    onImgWChanged: {
-        repaintAll();
+    onImgWChanged: { repaintAll(); Qt.callLater(refitAll); }
+    onImgHChanged: { repaintAll(); Qt.callLater(refitAll); }
+
+    function refitAll() {
+        if (!imgW || !imgH) return;
         for (const r of regions) if (r.box) r.box = fitBox(r.box);
         touch();
         seedLoader.next();
     }
-    onImgHChanged: repaintAll()
 
     function layerAt(i) { return layers.itemAt(i); }
     function repaintAll() {
@@ -134,7 +136,7 @@ Item {
     }
 
     function fitBox(b) {
-        if (!imgW) return b;
+        if (!imgW || !imgH) return b;
         const x = fitAxis(b[0], b[2], imgW), y = fitAxis(b[1], b[3], imgH);
         return [x[0], y[0], x[1], y[1]];
     }
