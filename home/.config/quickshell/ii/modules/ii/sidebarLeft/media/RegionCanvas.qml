@@ -23,7 +23,12 @@ Item {
     signal changed()
     clip: true
 
-    onImgWChanged: repaintAll()
+    onImgWChanged: {
+        repaintAll();
+        for (const r of regions) if (r.box) r.box = fitBox(r.box);
+        touch();
+        seedLoader.next();
+    }
     onImgHChanged: repaintAll()
 
     function layerAt(i) { return layers.itemAt(i); }
@@ -37,7 +42,7 @@ Item {
 
     function addRegion(seed, box, prompt) {
         if (regions.length >= colors.length) return -1;
-        const r = { color: colors[regions.length], strokes: [], redo: [], box: box ?? null, boxLocked: !!box,
+        const r = { color: colors[regions.length], strokes: [], redo: [], box: box ? fitBox(box) : null, boxLocked: !!box,
                     seed: seed ?? "", prompt: prompt ?? "", seedData: null, seedBox: null };
         regions = regions.concat([r]);
         const i = regions.length - 1;
@@ -122,9 +127,21 @@ Item {
         return x1 < x0 ? null : [x0, y0, x1, y1];
     }
 
+    function fitAxis(lo, hi, size) {
+        const len = Math.min(size, Math.max(hi - lo, minBox));
+        const start = Math.max(0, Math.min(size - len, (lo + hi) / 2 - len / 2));
+        return [start, start + len];
+    }
+
+    function fitBox(b) {
+        if (!imgW) return b;
+        const x = fitAxis(b[0], b[2], imgW), y = fitAxis(b[1], b[3], imgH);
+        return [x[0], y[0], x[1], y[1]];
+    }
+
     function autoBox(b) {
         const gx = (b[2] - b[0]) * 0.25, gy = (b[3] - b[1]) * 0.25;
-        return [Math.max(0, b[0] - gx), Math.max(0, b[1] - gy), Math.min(imgW, b[2] + gx), Math.min(imgH, b[3] + gy)];
+        return fitBox([Math.max(0, b[0] - gx), Math.max(0, b[1] - gy), Math.min(imgW, b[2] + gx), Math.min(imgH, b[3] + gy)]);
     }
 
     function ensureRegion() {
@@ -348,17 +365,23 @@ Item {
                     Shape {
                         anchors.fill: parent
                         ShapePath {
+                            id: outline
                             strokeColor: boxRect.tint
                             strokeWidth: 2 / content.scale
                             fillColor: "transparent"
                             strokeStyle: ShapePath.DashLine
                             dashPattern: [4, 3]
                             capStyle: ShapePath.FlatCap
-                            startX: 0; startY: 0
-                            PathLine { x: boxRect.width; y: 0 }
-                            PathLine { x: boxRect.width; y: boxRect.height }
-                            PathLine { x: 0; y: boxRect.height }
-                            PathLine { x: 0; y: 0 }
+                            readonly property real rr: Math.min(8 / content.scale, boxRect.width / 2, boxRect.height / 2)
+                            startX: outline.rr; startY: 0
+                            PathLine { x: boxRect.width - outline.rr; y: 0 }
+                            PathArc { x: boxRect.width; y: outline.rr; radiusX: outline.rr; radiusY: outline.rr }
+                            PathLine { x: boxRect.width; y: boxRect.height - outline.rr }
+                            PathArc { x: boxRect.width - outline.rr; y: boxRect.height; radiusX: outline.rr; radiusY: outline.rr }
+                            PathLine { x: outline.rr; y: boxRect.height }
+                            PathArc { x: 0; y: boxRect.height - outline.rr; radiusX: outline.rr; radiusY: outline.rr }
+                            PathLine { x: 0; y: outline.rr }
+                            PathArc { x: outline.rr; y: 0; radiusX: outline.rr; radiusY: outline.rr }
                         }
                     }
 
@@ -390,10 +413,11 @@ Item {
                                 const b = r.box.slice();
                                 const px = Math.max(0, Math.min(root.imgW, p.x));
                                 const py = Math.max(0, Math.min(root.imgH, p.y));
-                                if (f[0] === 0) b[0] = Math.min(px, b[2] - root.minBox);
-                                else if (f[0] === 1) b[2] = Math.max(px, b[0] + root.minBox);
-                                if (f[1] === 0) b[1] = Math.min(py, b[3] - root.minBox);
-                                else if (f[1] === 1) b[3] = Math.max(py, b[1] + root.minBox);
+                                const mw = Math.min(root.minBox, root.imgW), mh = Math.min(root.minBox, root.imgH);
+                                if (f[0] === 0) b[0] = Math.min(px, b[2] - mw);
+                                else if (f[0] === 1) b[2] = Math.max(px, b[0] + mw);
+                                if (f[1] === 0) b[1] = Math.min(py, b[3] - mh);
+                                else if (f[1] === 1) b[3] = Math.max(py, b[1] + mh);
                                 r.box = [Math.max(0, b[0]), Math.max(0, b[1]), Math.min(root.imgW, b[2]), Math.min(root.imgH, b[3])];
                                 r.boxLocked = true;
                                 root.touch();
@@ -439,7 +463,25 @@ Item {
         function next() {
             if (active || !queue.length || !root.imgW) return;
             active = queue.shift();
+            watch.ticks = 0;
             scratch.loadImage("file://" + active.seed);
+        }
+
+        function abandon() {
+            if (active) scratch.unloadImage("file://" + active.seed);
+            active = null;
+            next();
+        }
+
+        property Timer watch: Timer {
+            id: watch
+            interval: 300
+            repeat: true
+            running: seedLoader.active !== null
+            property int ticks: 0
+            onTriggered: {
+                if (scratch.isImageError("file://" + seedLoader.active.seed) || ++ticks > 20) seedLoader.abandon();
+            }
         }
     }
 
@@ -590,7 +632,7 @@ Item {
                 return;
             }
             stdinEnabled = true;
-            command = ["sh", "-c", "base64 -d > \"$1\"", "sh", jobs[pos].path];
+            command = ["sh", "-c", "mkdir -p \"$(dirname \"$1\")\" && base64 -d > \"$1\"", "sh", jobs[pos].path];
             running = true;
         }
 
