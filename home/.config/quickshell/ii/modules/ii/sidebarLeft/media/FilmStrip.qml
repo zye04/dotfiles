@@ -2,6 +2,7 @@ import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 import QtQuick
+import Qt5Compat.GraphicalEffects
 
 ListView {
     id: root
@@ -24,7 +25,10 @@ ListView {
         border.width: 2; border.color: MediaGen.selectedId === modelData.id ? Appearance.colors.colPrimary : "transparent"
         Rectangle {
             anchors { fill: parent; margins: 2 }
-            radius: Appearance.rounding.small - 2; clip: true; color: "transparent"
+            id: thumbBox
+            radius: Appearance.rounding.small - 2; color: "transparent"
+            layer.enabled: true
+            layer.effect: OpacityMask { maskSource: Rectangle { width: thumbBox.width; height: thumbBox.height; radius: thumbBox.radius } }
             Image { anchors.fill: parent; fillMode: Image.PreserveAspectCrop; asynchronous: true; source: MediaGen.thumbUrl(modelData.id) }
         }
         MaterialSymbol { anchors.centerIn: parent; visible: modelData.kind === "video"; text: "play_circle"; iconSize: 22; color: "#eeffffff" }

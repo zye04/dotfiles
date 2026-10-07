@@ -13,6 +13,8 @@ ColumnLayout {
     readonly property bool isVideo: item?.kind === "video"
     spacing: 8
 
+    // Decode only while the Media tab is on screen.
+    function syncPlay() { if (root.isVideo && MediaGen.tabVisible) player.play(); else player.pause(); }
     function act(kind, task) {
         MediaGen.setSource(root.item.path);
         if (kind === "image") { MediaGen.kind = "image"; MediaGen.task = task; }
@@ -37,8 +39,9 @@ ColumnLayout {
             loops: MediaPlayer.Infinite
             videoOutput: video
             audioOutput: AudioOutput { id: audio; muted: true }
-            onSourceChanged: if (source != "") play()
+            onSourceChanged: root.syncPlay()
         }
+        Connections { target: MediaGen; function onTabVisibleChanged() { root.syncPlay(); } }
         VideoOutput { id: video; anchors.fill: parent; visible: root.isVideo; fillMode: VideoOutput.PreserveAspectFit }
 
         ColumnLayout {   // empty state
@@ -69,7 +72,7 @@ ColumnLayout {
             Behavior on opacity { animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this) }
 
             RowLayout { anchors { top: parent.top; right: parent.right } spacing: 6
-                Glass { glyph: "compare"; visible: !!root.item?.source; StyledToolTip { text: "Compare with source" }
+                Glass { glyph: "compare"; visible: !!root.item?.source && !/\.(mp4|webm|mkv|mov)$/i.test(root.item.source); StyledToolTip { text: "Compare with source" }
                         downAction: () => compareImg.visible = true; releaseAction: () => compareImg.visible = false }
                 Glass { glyph: "open_in_full"; StyledToolTip { text: "Fullscreen" }
                         onClicked: Quickshell.execDetached(["xdg-open", root.item.path]) }

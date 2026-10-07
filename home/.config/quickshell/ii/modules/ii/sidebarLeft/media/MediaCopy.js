@@ -12,8 +12,6 @@ const CAMERAS = ["", "static", "pan", "push_in", "handheld"];
 const CAMERA_LABEL = { "": "Camera", static: "Static", pan: "Pan", push_in: "Push in", handheld: "Handheld" };
 const ROLE = { edit: "Will be edited", upscale: "Will be upscaled", i2v: "First frame of the video", long: "First frame of the video", enhance: "Will be enhanced" };
 const BUTTON = { t2i: ["auto_awesome", "Create image"], edit: ["edit", "Edit image"], upscale: ["hd", "Upscale image"], t2v: ["videocam", "Create video"], i2v: ["movie", "Animate image"], long: ["movie", "Animate image"], enhance: ["auto_fix_high", "Enhance video"] };
-const QUALITY_HINT_VIDEO = { draft: "~2 min / 5 s", balanced: "~4 min / 5 s", realistic: "~14 min / 5 s" };
-const QUALITY_HINT_IMAGE = { draft: "~8 s", balanced: "~12 s", realistic: "~20 s" };
 const SHAPES = [["16:9", "landscape"], ["9:16", "portrait"], ["1:1", "square"], ["4:5", "portrait"]];
 const LENGTHS = [[5, "one shot"], [10, "2 beats"], [20, "4 beats"], [30, "6 beats"]];
 

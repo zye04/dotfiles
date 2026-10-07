@@ -68,7 +68,7 @@ RowLayout {
     Pill { visible: root.showScale; label: "Scale"; value: MediaGen.scale === 1.5 ? "1.5×" : "2×"
            options: [[1.5, "1.5×", ""], [2.0, "2×", ""]]; onPicked: (v) => MediaGen.scale = v }
     Pill { visible: root.showQuality; label: "Quality"; value: MediaGen.quality.charAt(0).toUpperCase() + MediaGen.quality.slice(1)
-           options: ["draft", "balanced", "realistic"].map(q => [q, q.charAt(0).toUpperCase() + q.slice(1), (MediaGen.kind === "video" ? C.QUALITY_HINT_VIDEO : C.QUALITY_HINT_IMAGE)[q]])
+           options: ["draft", "balanced", "realistic"].map(q => [q, q.charAt(0).toUpperCase() + q.slice(1), MediaGen.qualityHint(q)])
            onPicked: (v) => MediaGen.quality = v }
     Item { Layout.fillWidth: true }
 }

@@ -8,6 +8,7 @@ import "MediaCopy.js" as C
 ColumnLayout {
     id: root
     readonly property string status: MediaGen.state.status ?? "idle"
+    readonly property bool errorShown: status === "error" && (MediaGen.state.error?.retryable ?? false) && (MediaGen.state.job?.id ?? "recovered") !== MediaGen.dismissedJobId
     readonly property var btn: C.buttonFor(MediaGen.mode(), MediaGen.srcPath !== "")
     spacing: 8
 
@@ -25,7 +26,7 @@ ColumnLayout {
     }
 
     RippleButton {   // main button
-        visible: root.status === "idle" || root.status === "error" && !MediaGen.state.error?.retryable
+        visible: root.status === "idle" || root.status === "error" && !root.errorShown
         Layout.fillWidth: true; implicitHeight: 46
         enabled: MediaGen.canSubmit()
         opacity: enabled ? 1 : 0.4
@@ -33,7 +34,7 @@ ColumnLayout {
         colBackground: Appearance.colors.colPrimaryContainer
         colBackgroundHover: Appearance.colors.colPrimaryContainerHover
         onClicked: MediaGen.submit()
-        StyledToolTip { text: "Ctrl + Enter" }
+        StyledToolTip { text: Ai.busy ? "The agent is replying…" : "Ctrl + Enter" }
         contentItem: RowLayout {
             anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
             MaterialSymbol { text: root.btn[0]; fill: 1; color: Appearance.colors.colOnPrimaryContainer }
@@ -81,7 +82,7 @@ ColumnLayout {
     }
 
     Rectangle {   // error card
-        visible: root.status === "error" && (MediaGen.state.error?.retryable ?? false)
+        visible: root.errorShown
         Layout.fillWidth: true; implicitHeight: err.implicitHeight + 24
         radius: Appearance.rounding.normal; color: Qt.alpha(Appearance.m3colors.m3errorContainer, 0.35)
         ColumnLayout {
@@ -95,7 +96,7 @@ ColumnLayout {
             }
             RowLayout {
                 Item { Layout.fillWidth: true }
-                DialogButton { buttonText: "Dismiss"; onClicked: MediaGen.state = Object.assign({}, MediaGen.state, { status: "idle", error: null }) }
+                DialogButton { buttonText: "Dismiss"; onClicked: MediaGen.dismissError() }
                 DialogButton { buttonText: (MediaGen.state.error?.saved_until_s ?? 0) > 0 ? "Retry from " + MediaGen.state.error.saved_until_s + " s" : "Retry"; onClicked: MediaGen.retry() }
             }
         }

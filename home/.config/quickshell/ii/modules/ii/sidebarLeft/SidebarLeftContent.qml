@@ -1,3 +1,4 @@
+import qs
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
@@ -26,6 +27,7 @@ Item {
     property int tabCount: swipeView.count
     readonly property bool mediaActive: root.aiChatEnabled && swipeView.currentIndex === 1
     onMediaActiveChanged: if (mediaActive) MediaGen.refreshItems()
+    Binding { target: MediaGen; property: "tabVisible"; value: root.mediaActive && GlobalStates.sidebarLeftOpen }
 
     function focusActiveItem() {
         swipeView.currentItem.forceActiveFocus()

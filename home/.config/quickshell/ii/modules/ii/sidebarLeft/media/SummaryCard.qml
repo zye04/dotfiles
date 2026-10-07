@@ -40,7 +40,7 @@ RippleButton {
                 StyledText { text: modelData[1]; font.pixelSize: Appearance.font.pixelSize.smaller; color: parent.on ? Appearance.colors.colOnLayer1 : Appearance.colors.colSubtext; Layout.fillWidth: true }
                 StyledText {
                     font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colSubtext
-                    text: parent.on ? "+" + MediaGen.fmtDuration((MediaGen.presets?.estimates_s.finish_per_beat[modelData[0]] ?? 0) * MediaGen.lengthS / 5).slice(1) : "off"
+                    text: parent.on ? "+" + MediaGen.fmtDuration((MediaGen.presets?.estimates_s.finish_per_beat[modelData[0]] ?? 0) * MediaGen.costBeats()).slice(1) : "off"
                 }
             }
         }

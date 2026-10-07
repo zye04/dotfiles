@@ -29,11 +29,13 @@ WindowDialog {
             StyledText { text: sr.label; font.pixelSize: Appearance.font.pixelSize.smallie; color: Appearance.colors.colOnLayer1 }
             Rectangle { width: 6; height: 6; radius: 3; color: Appearance.colors.colPrimary; visible: MediaGen.adv[sr.key] !== null }
             Item { Layout.fillWidth: true }
-            StyledText { text: sr.current; font.pixelSize: Appearance.font.pixelSize.smallie }
+            StyledText { text: sr.step < 1 ? sr.current.toFixed(1) : Math.round(sr.current); font.pixelSize: Appearance.font.pixelSize.smallie }
         }
         StyledSlider {
             Layout.fillWidth: true
             from: sr.from; to: sr.to; stepSize: sr.step; value: sr.current
+            usePercentTooltip: false
+            tooltipContent: sr.step < 1 ? value.toFixed(1) : String(Math.round(value))
             onMoved: root.setAdv(sr.key, value === MediaGen.presetValue(sr.key) ? null : value)
         }
         RowLayout {

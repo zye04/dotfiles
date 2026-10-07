@@ -33,6 +33,8 @@ Singleton {
     property var finish: ({ upscale: true, cinematic24: true, grain: false })
     property var adv: ({ steps: null, cfg: null, seed: null })
     property string selectedId: ""
+    property bool tabVisible: false          // set by SidebarLeftContent: sidebar open and Media tab current
+    property string dismissedJobId: ""
 
     function mode() {
         if (kind === "image") return srcPath === "" ? "t2i" : (task === "upscale" ? "upscale" : "edit");
@@ -46,13 +48,40 @@ Singleton {
         if (kind === "image") return key === "steps" ? presets.image[quality].steps : presets.image.cfg;
         return key === "steps" ? presets.video[quality].steps : presets.video[quality].cfg_hi;
     }
+    function itemForPath(path) { return items.find(i => i.path === path) ?? null; }
+    // Our own videos: 16 fps as generated, 24 fps once Cinematic ran. Anything else is unknown.
+    function itemFps(it) {
+        const sp = it?.spec ?? {};
+        if (sp.finish?.cinematic24) return 24;
+        return sp.mode === "t2v" || sp.mode === "i2v" ? 16 : null;
+    }
+    function srcDuration() { return itemForPath(srcPath)?.duration_s ?? 5; }
+    function costBeats() { return mode() === "enhance" ? Math.max(1, Math.ceil(srcDuration() / 5)) : lengthS / 5; }
+    function qualityHint(q) {
+        const e = presets?.estimates_s;
+        if (!e) return "";
+        if (kind === "video") return "~" + Math.max(1, Math.round(e.video_per_beat[q] / 60)) + " min / 5 s";
+        return "~" + e.image[q] + " s";
+    }
+    // Resolution a generated video comes out at (mirrors the service's video_dims); null when unknown.
+    function videoDims() {
+        if (!presets) return null;
+        if (srcKind === "video") { const it = itemForPath(srcPath); return it ? [it.w, it.h] : null; }
+        const table = presets.video.res[presets.video[quality].res], it = srcPath !== "" ? itemForPath(srcPath) : null;
+        if (it && it.w && it.h) {
+            const bw = table["16:9"][0], bh = table["16:9"][1], a = it.w / it.h, h = Math.sqrt(bw * bh / a);
+            const r16 = x => Math.max(16, Math.round(x / 16) * 16);
+            return [r16(h * a), r16(h)];
+        }
+        return table[shape] ?? null;
+    }
     function selectedItem() { return items.find(i => i.id === selectedId) ?? (items.length ? items[0] : null); }
     function estimateS() {
         if (!presets) return 0;
         const e = presets.estimates_s, m = mode();
         if (kind === "image") return m === "t2i" ? e.image[quality] : e.image[m];
         let beatsN = lengthS / 5, gen = e.video_per_beat[quality] * beatsN;
-        if (m === "enhance") { const it = items.find(i => i.path === srcPath); beatsN = Math.max(1, Math.ceil((it?.duration_s ?? 5) / 5)); gen = 0; }
+        if (m === "enhance") { beatsN = costBeats(); gen = 0; }
         let fin = 0;
         for (const k of ["upscale", "cinematic24", "grain"]) if (finish[k]) fin += e.finish_per_beat[k];
         return Math.round(gen + fin * beatsN);
@@ -63,7 +92,7 @@ Singleton {
         return "~" + (s / 3600).toFixed(1).replace(".0", "") + " h";
     }
     function canSubmit() {
-        if (busy || !connected) return false;
+        if (busy || !connected || Ai.busy) return false;
         const m = mode();
         if (m === "enhance") return finish.upscale || finish.cinematic24 || finish.grain;
         if (m === "upscale") return true;
@@ -88,6 +117,10 @@ Singleton {
         srcKind = ["mp4", "webm", "mkv", "mov"].includes(ext) ? "video" : "image";
         if (srcKind === "video") kind = "video";
         srcPath = path;
+        if (srcKind === "video") {   // only offer steps that make sense for this source
+            const it = itemForPath(path), fps = itemFps(it);
+            finish = { upscale: it ? it.h < 1440 : true, cinematic24: fps !== null && fps < 24, grain: false };
+        }
     }
     function clearSource() { srcPath = ""; srcKind = ""; }
     function reuse(item) {
@@ -99,6 +132,9 @@ Singleton {
         if (sp.beats) beats = sp.beats.map(b => ({ text: b.text, camera: b.camera ?? "" }));
         adv = { steps: sp.advanced?.steps ?? null, cfg: sp.advanced?.cfg ?? null, seed: item.seed ?? null };
         if (sp.source) setSource(sp.source); else clearSource();
+        task = sp.mode === "upscale" ? "upscale" : "edit";
+        if (sp.scale) scale = sp.scale;
+        if (sp.finish) finish = Object.assign({}, sp.finish);
     }
     function thumbUrl(id) { return base + "/thumb/" + id; }
 
@@ -124,15 +160,28 @@ Singleton {
             root._next();
         }
     }
-    function refreshItems() { _request("GET", "/items?limit=60", null, (st, d) => { if (st === 200) { items = d; if (!items.find(i => i.id === selectedId)) selectedId = items.length ? items[0].id : ""; } }); }
+    function refreshItems(selectNewest) {
+        _request("GET", "/items?limit=60", null, (st, d) => {
+            if (st !== 200) return;
+            items = d;
+            if (selectNewest && items.length) selectedId = items[0].id;
+            else if (!items.find(i => i.id === selectedId)) selectedId = items.length ? items[0].id : "";
+        });
+    }
     function refreshPresets() { _request("GET", "/presets", null, (st, d) => { if (st === 200) presets = d; }); }
     function submit() {
         if (!canSubmit()) return;
-        lastError = "";
+        lastError = ""; dismissedJobId = "";
         _request("POST", "/jobs", buildSpec(), (st, d) => { if (st !== 202) { const e = d?.error; lastError = !e ? "Couldn't start the job" : e === "busy" ? "A job is already running" : typeof e === "string" ? e : JSON.stringify(e); } });
     }
     function stop() { _request("POST", "/stop", {}, null); }
-    function retry() { _request("POST", "/retry", {}, null); }
+    function dismissError() { dismissedJobId = state.job?.id ?? "recovered"; }
+    function retry(finishOverride) {
+        lastError = "";
+        _request("POST", "/retry", finishOverride ? { finish: finishOverride } : {}, (st, d) => {
+            if (st !== 202) { const e = d?.error; lastError = !e ? "Couldn't retry the job" : e === "busy" ? "A job is already running" : typeof e === "string" ? e : JSON.stringify(e); }
+        });
+    }
     function deleteItem(id) { _request("DELETE", "/items/" + id, null, (st) => refreshItems()); }
 
     // ---- SSE
@@ -146,7 +195,7 @@ Singleton {
                     const prev = root.state.status;
                     root.state = JSON.parse(line.slice(5));
                     root.connected = true;
-                    if ((prev === "running" || prev === "starting") && root.state.status !== "running" && root.state.status !== "starting") root.refreshItems();
+                    if ((prev === "running" || prev === "starting") && root.state.status !== "running" && root.state.status !== "starting") root.refreshItems(root.state.status === "idle");
                 } catch (e) {}
             }
         }
@@ -164,12 +213,12 @@ Singleton {
     // ---- sources: clipboard paste and file picker
     property Process pasteProc: Process {
         property string out: ""
-        onExited: (code) => { if (code === 0) root.setSource(out); }
+        onExited: (code) => { if (code === 0) root.setSource(out); else root.lastError = "Nothing to paste"; }
     }
     function pasteSource() {
         const out = Quickshell.env("HOME") + "/.cache/local-suite/media/paste-" + Date.now() + ".png";
         pasteProc.out = out;
-        pasteProc.command = ["sh", "-c", "mkdir -p \"$(dirname \"$1\")\" && wl-paste --type image/png > \"$1\" && [ -s \"$1\" ]", "sh", out];
+        pasteProc.command = ["sh", "-c", "mkdir -p \"$(dirname \"$1\")\" && { wl-paste --type image/png > \"$1\" && [ -s \"$1\" ] || { rm -f \"$1\"; exit 1; }; }", "sh", out];
         pasteProc.running = true;
     }
     property Process pickProc: Process {
