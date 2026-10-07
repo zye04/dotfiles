@@ -23,10 +23,12 @@ PanelWindow {
     readonly property real largeAreaPx: 2.5e6 * (presetRegion?.target_mp ?? 1.0)
     readonly property int nPainted: { rev; return canvas.regions.filter((r, i) => canvas.bbox(i)).length; }
     readonly property var perRegionS: {
-        const v = MediaGen.presets?.estimates_s?.image?.region;
+        const img = MediaGen.presets?.estimates_s?.image;
+        const v = img?.region ?? img?.edit;
         return typeof v === "object" && v !== null ? v[MediaGen.quality] : v;
     }
     property var lastApplied: null
+    property bool applying: false
 
     function prompts() { return canvas.regions.map(r => r.prompt ?? ""); }
     function stateJson() { const s = JSON.parse(canvas.stateJson()); s.prompts = prompts(); return JSON.stringify(s); }
@@ -36,15 +38,19 @@ PanelWindow {
     }
     function canApply() {
         rev;
-        return !MediaGen.busy && MediaGen.connected && !Ai.busy && canvas.regions.some((r, i) => canvas.bbox(i) && (r.prompt ?? "").trim().length);
+        if (applying || MediaGen.busy || !MediaGen.connected || Ai.busy) return false;
+        const painted = canvas.regions.filter((r, i) => canvas.bbox(i));
+        return painted.length > 0 && painted.every(r => (r.prompt ?? "").trim().length);
     }
     function apply() {
         if (!canApply()) return;
+        MediaGen.lastError = "";
+        applying = true;
         canvas.exportMasks((list) => {
-            if (!list) { MediaGen.lastError = "Couldn't save the painted areas"; return; }
+            if (!list) { applying = false; MediaGen.lastError = "Couldn't save the painted areas"; return; }
             const regions = list.map(m => ({ mask: m.mask, box: m.box.map(Math.round), prompt: (canvas.regions[m.index]?.prompt ?? "").trim() }))
                                 .filter(r => r.prompt.length);
-            if (!regions.length) { MediaGen.lastError = "Give each painted area a prompt"; return; }
+            if (!regions.length) { applying = false; MediaGen.lastError = "Give each painted area a prompt"; return; }
             win.lastApplied = regions;
             MediaGen.submitRegions(regions);
         });
@@ -69,7 +75,8 @@ PanelWindow {
     }
     Component.onDestruction: if (MediaGen.regionEditor === win) MediaGen.regionEditor = null
 
-    Connections { target: canvas; function onChanged() { win.confirmCancel = false; } }
+    Connections { target: MediaGen; function onLastErrorChanged() { if (MediaGen.lastError !== "") win.applying = false; } }
+    Connections { target: canvas; function onChanged() { win.confirmCancel = false; } function onInteracted() { keys.forceActiveFocus(); } }
 
     Rectangle { anchors.fill: parent; color: Appearance.m3colors.m3scrim; opacity: 0.82 }
     Item {
@@ -113,11 +120,14 @@ PanelWindow {
                         ToolButton { sym: "undo"; tip: "Undo (Ctrl+Z)"; onClicked: canvas.undo() }
                         ToolButton { sym: "redo"; tip: "Redo (Ctrl+Shift+Z)"; onClicked: canvas.redo() }
                         ToolButton { sym: "delete"; tip: "Clear this area"; onClicked: canvas.clearRegion() }
+                        ToolButton { sym: "crop_free"; tip: "Show boxes"; active: canvas.showBoxes; onClicked: canvas.showBoxes = !canvas.showBoxes }
                         StyledSlider {
-                            Layout.preferredWidth: 160
+                            Layout.preferredWidth: 180
                             Layout.leftMargin: 8
                             from: 4; to: 400; stepSize: 1
                             value: canvas.brushSize
+                            usePercentTooltip: false
+                            tooltipContent: Math.round(value) + " px"
                             onMoved: canvas.brushSize = value
                             focusPolicy: Qt.NoFocus
                         }
@@ -139,9 +149,6 @@ PanelWindow {
                 Item {
                     Layout.fillWidth: true; Layout.fillHeight: true
                     RegionCanvas { id: canvas; anchors.fill: parent; source: MediaGen.regionPath }
-                    TapHandler {
-                        onPressedChanged: if (pressed) keys.forceActiveFocus()
-                    }
                 }
             }
 
@@ -161,13 +168,14 @@ PanelWindow {
                     }
 
                     Repeater {
-                        model: canvas.regions
+                        model: canvas.regions.length
                         delegate: Rectangle {
                             id: card
-                            required property var modelData
                             required property int index
+                            readonly property var reg: win.rev >= 0 ? canvas.regions[index] : null
                             readonly property bool isCurrent: canvas.current === index
-                            readonly property var box: win.rev >= 0 ? modelData.box : null
+                            readonly property var box: win.rev >= 0 && reg ? reg.box : null
+                            readonly property bool needsPrompt: win.rev >= 0 && !!canvas.bbox(index) && !(card.reg?.prompt ?? "").trim().length
                             readonly property bool large: !!box && (box[2] - box[0]) * (box[3] - box[1]) > win.largeAreaPx
                             Layout.fillWidth: true
                             implicitHeight: cardCol.implicitHeight + 20
@@ -182,7 +190,7 @@ PanelWindow {
                                 spacing: 6
                                 RowLayout {
                                     spacing: 8
-                                    Rectangle { implicitWidth: 14; implicitHeight: 14; radius: 7; color: card.modelData.color }
+                                    Rectangle { implicitWidth: 14; implicitHeight: 14; radius: 7; color: card.reg.color }
                                     StyledText { text: "Area " + (card.index + 1); font.pixelSize: Appearance.font.pixelSize.small; font.weight: Font.Medium }
                                     Item { Layout.fillWidth: true }
                                     RippleButton {
@@ -195,28 +203,41 @@ PanelWindow {
                                         StyledToolTip { text: "Remove this area" }
                                     }
                                 }
-                                TextEdit {
-                                    id: promptEdit
+                                Rectangle {
                                     Layout.fillWidth: true
-                                    Layout.minimumHeight: 40
-                                    wrapMode: TextEdit.Wrap
-                                    color: Appearance.colors.colOnLayer2
-                                    font.family: Appearance.font.family.main; font.pixelSize: Appearance.font.pixelSize.smallie
-                                    selectionColor: Appearance.colors.colPrimaryContainer
-                                    text: card.modelData.prompt ?? ""
-                                    onTextChanged: if (text !== (card.modelData.prompt ?? "")) { card.modelData.prompt = text; canvas.touch(); }
-                                    onActiveFocusChanged: if (activeFocus) canvas.current = card.index
-                                    Keys.onPressed: (e) => { e.accepted = win.handleKey(e, true); }
-                                    StyledText {
-                                        anchors.fill: parent; visible: promptEdit.text.length === 0; wrapMode: Text.Wrap
-                                        text: "What should change here?"; color: Appearance.colors.colSubtext; opacity: 0.6
-                                        font.pixelSize: Appearance.font.pixelSize.smallie
+                                    implicitHeight: Math.max(56, promptEdit.implicitHeight + 18)
+                                    radius: Appearance.rounding.small
+                                    color: Appearance.colors.colLayer3
+                                    border.width: promptEdit.activeFocus ? 2 : 0
+                                    border.color: Appearance.colors.colPrimary
+                                    TextEdit {
+                                        id: promptEdit
+                                        anchors { fill: parent; margins: 9; leftMargin: 11; rightMargin: 11 }
+                                        wrapMode: TextEdit.Wrap
+                                        color: Appearance.colors.colOnLayer2
+                                        font.family: Appearance.font.family.main; font.pixelSize: Appearance.font.pixelSize.smallie
+                                        selectionColor: Appearance.colors.colPrimaryContainer
+                                        text: card.reg.prompt ?? ""
+                                        onTextChanged: if (text !== (card.reg.prompt ?? "")) { card.reg.prompt = text; canvas.touch(); }
+                                        onActiveFocusChanged: if (activeFocus) canvas.current = card.index
+                                        Keys.onPressed: (e) => { e.accepted = win.handleKey(e, true); }
+                                        StyledText {
+                                            anchors.fill: parent; visible: promptEdit.text.length === 0; wrapMode: Text.Wrap
+                                            text: "What should change here?"; color: Appearance.colors.colSubtext; opacity: 0.6
+                                            font.pixelSize: Appearance.font.pixelSize.smallie
+                                        }
                                     }
                                 }
                                 StyledText {
                                     Layout.fillWidth: true; wrapMode: Text.Wrap
                                     text: "Drag the box over where it should end up"
                                     color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller
+                                }
+                                StyledText {
+                                    visible: card.needsPrompt
+                                    Layout.fillWidth: true; wrapMode: Text.Wrap
+                                    text: "Describe this area"
+                                    color: Appearance.m3colors.m3error; font.pixelSize: Appearance.font.pixelSize.smaller
                                 }
                                 StyledText {
                                     visible: card.large
@@ -266,9 +287,9 @@ PanelWindow {
                         }
                     }
                     StyledText {
-                        visible: win.perRegionS !== undefined && win.perRegionS !== null && win.nPainted > 0
+                        visible: win.perRegionS !== undefined && win.perRegionS !== null
                         Layout.fillWidth: true
-                        text: MediaGen.fmtDuration((win.perRegionS ?? 0) * win.nPainted)
+                        text: MediaGen.fmtDuration(win.perRegionS) + " per area" + (win.nPainted > 1 ? " · " + MediaGen.fmtDuration(win.perRegionS * win.nPainted) : "")
                         color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller
                     }
                     StyledText {
@@ -285,7 +306,26 @@ PanelWindow {
                         Layout.fillWidth: true
                         DialogButton { buttonText: "Cancel"; onClicked: win.cancel() }
                         Item { Layout.fillWidth: true }
-                        DialogButton { buttonText: C.BUTTON.region[1]; enabled: win.canApply(); onClicked: win.apply() }
+                        RippleButton {
+                            implicitHeight: 40; implicitWidth: applyRow.implicitWidth + 32
+                            buttonRadius: Appearance.rounding.full
+                            enabled: win.canApply()
+                            opacity: enabled || win.applying ? 1 : 0.4
+                            colBackground: Appearance.colors.colPrimary
+                            colBackgroundHover: Appearance.colors.colPrimaryHover
+                            onClicked: win.apply()
+                            StyledToolTip { text: "Ctrl + Enter" }
+                            contentItem: RowLayout {
+                                id: applyRow
+                                anchors.centerIn: parent; spacing: 6
+                                MaterialSymbol { text: C.BUTTON.region[0]; fill: 1; iconSize: 20; color: Appearance.colors.colOnPrimary }
+                                StyledText {
+                                    text: win.applying ? "Applying…" : C.BUTTON.region[1]
+                                    font.pixelSize: Appearance.font.pixelSize.smallie; font.weight: Font.Medium
+                                    color: Appearance.colors.colOnPrimary
+                                }
+                            }
+                        }
                     }
                 }
             }

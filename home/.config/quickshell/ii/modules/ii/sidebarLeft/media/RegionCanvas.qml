@@ -16,11 +16,13 @@ Item {
     property real zoom: 1
     property point pan: Qt.point(0, 0)
     property bool spaceHeld: false
+    property bool showBoxes: true
     property var regions: []
     property int rev: 0
     readonly property var colors: ["#ff5252", "#40c4ff", "#ffd740", "#69f0ae"]
     readonly property int minBox: 64
     signal changed()
+    signal interacted()
     clip: true
 
     onImgWChanged: { repaintAll(); Qt.callLater(refitAll); }
@@ -189,6 +191,7 @@ Item {
         function imgPoint(m) { return content.mapFromItem(mouseArea, m.x, m.y); }
 
         onPressed: m => {
+            root.interacted();
             if (!root.imgW) return;
             if (m.button === Qt.MiddleButton || root.spaceHeld) {
                 mode = "pan";
@@ -355,21 +358,22 @@ Item {
 
                 Rectangle {
                     id: boxRect
-                    visible: lay.box !== null
+                    visible: root.showBoxes && lay.box !== null
                     x: lay.box ? lay.box[0] : 0
                     y: lay.box ? lay.box[1] : 0
                     width: lay.box ? lay.box[2] - lay.box[0] : 0
                     height: lay.box ? lay.box[3] - lay.box[1] : 0
-                    color: "transparent"
-                    opacity: lay.isCurrent ? 1 : 0.35
                     readonly property color tint: lay.reg ? lay.reg.color : "transparent"
+                    color: Qt.alpha(tint, lay.isCurrent ? 0.09 : 0.04)
+                    radius: Math.min(8 / content.scale, width / 2, height / 2)
+                    opacity: lay.isCurrent ? 1 : 0.6
 
                     Shape {
                         anchors.fill: parent
                         ShapePath {
                             id: outline
                             strokeColor: boxRect.tint
-                            strokeWidth: 2 / content.scale
+                            strokeWidth: (lay.isCurrent ? 2 : 1) / content.scale
                             fillColor: "transparent"
                             strokeStyle: ShapePath.DashLine
                             dashPattern: [4, 3]
