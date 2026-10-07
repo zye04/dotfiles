@@ -23,6 +23,7 @@ Singleton {
     property string kind: "image"
     property string srcPath: ""
     property string srcKind: ""
+    property var refs: []
     property string task: "edit"
     property string prompt: ""
     property var beats: []
@@ -111,6 +112,7 @@ Singleton {
         if (Object.keys(lo).length) a.loras = lo;
         s.advanced = a;
         if (srcPath !== "") s.source = srcPath;
+        if (m === "edit" && refs.length) s.refs = refs;
         if (m === "t2v" || m === "i2v") { s.length_s = lengthS; s.beats = beats.slice(0, lengthS / 5 - 1).map(b => ({ text: b.text, camera: b.camera || null })); }
         if (m === "upscale") s.scale = scale;
         return s;
@@ -152,13 +154,20 @@ Singleton {
         const ext = path.split(".").pop().toLowerCase();
         srcKind = ["mp4", "webm", "mkv", "mov"].includes(ext) ? "video" : "image";
         if (srcKind === "video") kind = "video";
-        srcPath = path;
+        srcPath = path; refs = [];
         if (srcKind === "video") {   // only offer steps that make sense for this source
             const it = itemForPath(path), fps = itemFps(it);
             finish = { upscale: it ? it.h < 1440 : true, cinematic24: fps !== null && fps < 24, grain: false };
         }
     }
-    function clearSource() { srcPath = ""; srcKind = ""; }
+    function clearSource() { srcPath = ""; srcKind = ""; refs = []; }
+    // User-added images: the first becomes the source, later ones (image mode only) become references.
+    function addImage(path) {
+        const isImg = !["mp4", "webm", "mkv", "mov"].includes(path.split(".").pop().toLowerCase());
+        if (kind === "image" && isImg && srcKind === "image" && srcPath !== "" && path !== srcPath) {
+            if (refs.length < 3 && !refs.includes(path)) refs = refs.concat([path]); else if (refs.length >= 3) lastError = "Up to 3 reference images";
+        } else setSource(path);
+    }
     function reuse(item) {
         if (item.spec?.mode === "region") { quality = item.quality ?? quality; openRegionEditor(item.spec.source, item.spec.regions); return; }
         const sp = item.spec ?? {};
@@ -171,6 +180,7 @@ Singleton {
         for (const [role, key] of Object.entries(sp.advanced?.models ?? {})) setModel(role, key);
         for (const [k, v] of Object.entries(sp.advanced?.loras ?? {})) setLora(k, v);
         if (sp.source) setSource(sp.source); else clearSource();
+        refs = sp.refs ?? [];
         task = sp.mode === "upscale" ? "upscale" : "edit";
         if (sp.scale) scale = sp.scale;
         if (sp.finish) finish = Object.assign({}, sp.finish);
@@ -230,7 +240,9 @@ Singleton {
         lastError = ""; dismissedJobId = "";
         const a = Object.assign({}, adv); delete a.loras;
         if (!Object.keys(a.models ?? {}).length || !presets?.models) delete a.models;
-        _request("POST", "/jobs", { mode: "region", source: regionPath, quality: quality, advanced: a, regions: regions }, (st, d) => {
+        const body = { mode: "region", source: regionPath, quality: quality, advanced: a, regions: regions };
+        if (refs.length && regionPath === srcPath) body.refs = refs;
+        _request("POST", "/jobs", body, (st, d) => {
             if (st === 202) { closeRegionEditor(); return; }
             const e = d?.error; lastError = !e ? "Couldn't start the job" : e === "busy" ? "A job is already running" : typeof e === "string" ? e : JSON.stringify(e);
         });
@@ -265,7 +277,7 @@ Singleton {
     // ---- sources: clipboard paste and file picker
     property Process pasteProc: Process {
         property string out: ""
-        onExited: (code) => { if (code === 0) root.setSource(out); else root.lastError = "Nothing to paste"; }
+        onExited: (code) => { if (code === 0) root.addImage(out); else root.lastError = "Nothing to paste"; }
     }
     function pasteSource() {
         const out = Quickshell.env("HOME") + "/.cache/local-suite/media/paste-" + Date.now() + ".png";
@@ -274,11 +286,12 @@ Singleton {
         pasteProc.running = true;
     }
     property Process pickProc: Process {
-        stdout: StdioCollector { onStreamFinished: { const p = text.trim(); if (p) root.setSource(p); } }
+        stdout: StdioCollector { onStreamFinished: { for (const p of text.split("\n").map(l => l.trim()).filter(l => l)) root.addImage(p); } }
     }
     function pickSource() {
         const filter = kind === "video" ? "Images and videos (*.png *.jpg *.jpeg *.webp *.mp4 *.webm *.mkv *.mov)" : "Images (*.png *.jpg *.jpeg *.webp)";
-        pickProc.command = ["kdialog", "--getopenfilename", Quickshell.env("HOME") + "/agent", filter];
+        pickProc.command = kind === "video" ? ["kdialog", "--getopenfilename", Quickshell.env("HOME") + "/agent", filter]
+                                             : ["kdialog", "--getopenfilename", "--multiple", "--separate-output", Quickshell.env("HOME") + "/agent", filter];
         pickProc.running = true;
     }
 
@@ -287,7 +300,7 @@ Singleton {
     IpcHandler {
         target: "media"
         function state(): string {
-            return JSON.stringify({ server: root.state, connected: root.connected, kind: root.kind, mode: root.mode(), srcPath: root.srcPath,
+            return JSON.stringify({ server: root.state, connected: root.connected, kind: root.kind, mode: root.mode(), srcPath: root.srcPath, refs: root.refs,
                                     prompt: root.prompt, lengthS: root.lengthS, quality: root.quality, selectedId: root.selectedId, regionPath: root.regionPath,
                                     items: root.items.length, estimate: root.fmtDuration(root.estimateS()), busy: root.busy, tabVisible: root.tabVisible, models: root.adv.models, loras: root.adv.loras });
         }
@@ -299,6 +312,7 @@ Singleton {
         function regionState(): string { return root.regionEditor ? root.regionEditor.stateJson() : "{}"; }
         function setKind(k: string): void { root.kind = k; root.clearSource(); }
         function setSource(path: string): void { root.setSource(path); }
+        function addImage(path: string): void { root.addImage(path); }
         function setPrompt(text: string): void { root.prompt = text; }
         function setLength(s: int): void { root.setLength(s); }
         function setModel(role: string, key: string): void { root.setModel(role, key); }

@@ -13,7 +13,7 @@ Item {
 
     DropArea {
         anchors.fill: parent
-        onDropped: (drop) => { if (drop.hasUrls) MediaGen.setSource(decodeURIComponent(drop.urls[0].toString().replace("file://", ""))); }
+        onDropped: (drop) => { if (drop.hasUrls) for (const u of drop.urls) MediaGen.addImage(decodeURIComponent(u.toString().replace("file://", ""))); }
     }
     RippleButton {
         anchors.fill: parent
@@ -25,7 +25,15 @@ Item {
             anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
             spacing: 10
             MaterialSymbol { text: "add_photo_alternate"; iconSize: Appearance.font.pixelSize.larger; color: Appearance.colors.colOnLayer1 }
-            StyledText { Layout.fillWidth: true; elide: Text.ElideRight; text: MediaGen.kind === "video" ? "Start from an image or a video" : "Start from an image"; color: Appearance.colors.colOnLayer1; font.pixelSize: Appearance.font.pixelSize.smallie }
+            StyledText { Layout.fillWidth: MediaGen.kind === "video"; elide: Text.ElideRight; text: MediaGen.kind === "video" ? "Start from an image or a video" : "Start from one or more images"; color: Appearance.colors.colOnLayer1; font.pixelSize: Appearance.font.pixelSize.smallie }
+            MaterialSymbol {
+                visible: MediaGen.kind === "image"
+                text: "help"; iconSize: 15; color: Appearance.colors.colSubtext
+                HoverHandler { id: helpHover }
+                property bool hovered: helpHover.hovered
+                StyledToolTip { text: "The first image is the one that gets edited.\nAdd up to 3 more as references (people, objects,\nclothes, places) and mention them in the prompt\nas \"image 2\", \"image 3\" and so on." }
+            }
+            Item { visible: MediaGen.kind === "image"; Layout.fillWidth: true }
             StyledText { text: "optional · drop or Ctrl V"; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
         }
     }
@@ -46,7 +54,7 @@ Item {
             ColumnLayout {
                 Layout.fillWidth: true; spacing: 0
                 StyledText { Layout.fillWidth: true; elide: Text.ElideMiddle; text: MediaGen.srcPath.split("/").pop(); font.pixelSize: Appearance.font.pixelSize.smallie }
-                StyledText { text: C.ROLE[MediaGen.mode()] ?? ""; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
+                StyledText { text: (C.ROLE[MediaGen.mode()] ?? "") + (MediaGen.refs.length ? " · +" + MediaGen.refs.length + (MediaGen.refs.length === 1 ? " reference" : " references") : ""); color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
             }
             RippleButton {
                 implicitWidth: 30; implicitHeight: 30; buttonRadius: Appearance.rounding.full
