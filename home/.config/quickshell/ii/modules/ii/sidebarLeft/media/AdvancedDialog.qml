@@ -18,7 +18,7 @@ WindowDialog {
         visible: tip !== ""
         text: "help"; iconSize: 15; color: Appearance.colors.colSubtext
         HoverHandler { id: hover }
-        StyledToolTip { text: parent.tip }
+        StyledToolTip { text: parent.tip.replace(/(.{1,48})(\s+|$)/g, "$1\n").trim() }  // shared tooltip has no max width
     }
 
     WindowDialogTitle { text: "Advanced" }
@@ -141,15 +141,20 @@ WindowDialog {
         StyledText { text: "LoRAs"; font.pixelSize: Appearance.font.pixelSize.smallie; color: Appearance.colors.colOnLayer1 }
         Repeater {
             model: MediaGen.loraKeys()
-            delegate: RowLayout {
+            delegate: ColumnLayout {
                 id: lr
                 required property string modelData
                 readonly property var meta: MediaGen.presets.models.video.options[MediaGen.modelKey("video")].loras[modelData]
                 readonly property real val: MediaGen.loraValue(modelData)
-                Layout.fillWidth: true; spacing: 6
-                StyledText { text: lr.meta?.label ?? lr.modelData; font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colSubtext }
-                HelpIcon { tip: lr.meta?.help ?? "" }
-                Rectangle { width: 6; height: 6; radius: 3; color: Appearance.colors.colPrimary; visible: MediaGen.adv.loras?.[lr.modelData] !== undefined }
+                Layout.fillWidth: true; spacing: 0
+                RowLayout {
+                    Layout.fillWidth: true; spacing: 6
+                    StyledText { text: lr.meta?.label ?? lr.modelData; font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colSubtext }
+                    HelpIcon { tip: lr.meta?.help ?? "" }
+                    Rectangle { width: 6; height: 6; radius: 3; color: Appearance.colors.colPrimary; visible: MediaGen.adv.loras?.[lr.modelData] !== undefined }
+                    Item { Layout.fillWidth: true }
+                    StyledText { text: lr.val < 0.025 ? "off" : lr.val.toFixed(2); font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colOnLayer1 }
+                }
                 StyledSlider {
                     Layout.fillWidth: true
                     from: 0; to: 1.5; stepSize: 0.05; value: lr.val
@@ -157,8 +162,6 @@ WindowDialog {
                     tooltipContent: value < 0.025 ? "off" : value.toFixed(2)
                     onMoved: MediaGen.setLora(lr.modelData, value)
                 }
-                StyledText { Layout.preferredWidth: 32; horizontalAlignment: Text.AlignRight
-                             text: lr.val < 0.025 ? "off" : lr.val.toFixed(2); font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colOnLayer1 }
             }
         }
     }
