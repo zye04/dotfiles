@@ -26,3 +26,5 @@ function buttonFor(mode, hasSource) {
     if (mode === "long" && !hasSource) b[1] = "Create video";
     return b;
 }
+
+function mmss(s) { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }

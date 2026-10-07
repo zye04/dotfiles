@@ -1,6 +1,7 @@
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
+import "media"
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -18,10 +19,13 @@ Item {
     property bool animeCloset: Config.options.policies.weeb === 2
     property var tabButtonList: [
         ...(root.aiChatEnabled ? [{"icon": "neurology", "name": Translation.tr("Agent")}] : []),
+        ...(root.aiChatEnabled ? [{"icon": "photo_library", "name": Translation.tr("Media")}] : []),
         ...(root.translatorEnabled ? [{"icon": "translate", "name": Translation.tr("Translator")}] : []),
         ...((root.animeEnabled && !root.animeCloset) ? [{"icon": "bookmark_heart", "name": Translation.tr("Anime")}] : [])
     ]
     property int tabCount: swipeView.count
+    readonly property bool mediaActive: root.aiChatEnabled && swipeView.currentIndex === 1
+    onMediaActiveChanged: if (mediaActive) MediaGen.refreshItems()
 
     function focusActiveItem() {
         swipeView.currentItem.forceActiveFocus()
@@ -85,6 +89,7 @@ Item {
 
                 contentChildren: [
                     ...(root.aiChatEnabled ? [aiChat.createObject()] : []),
+                    ...(root.aiChatEnabled ? [mediaStudio.createObject()] : []),
                     ...(root.translatorEnabled ? [translator.createObject()] : []),
                     ...((root.tabButtonList.length === 0 || (!root.aiChatEnabled && !root.translatorEnabled && root.animeCloset)) ? [placeholder.createObject()] : []),
                     ...(root.animeEnabled ? [anime.createObject()] : []),
@@ -95,6 +100,10 @@ Item {
         Component {
             id: aiChat
             AiChat {}
+        }
+        Component {
+            id: mediaStudio
+            MediaStudio {}
         }
         Component {
             id: translator

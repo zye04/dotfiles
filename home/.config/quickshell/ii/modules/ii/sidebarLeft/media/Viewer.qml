@@ -50,14 +50,14 @@ ColumnLayout {
 
         component Glass: RippleButton {
             id: gbtn
-            property string icon
+            property string glyph
             property string label: ""
             implicitHeight: 34; implicitWidth: label !== "" ? gl.implicitWidth + 24 : 34
             buttonRadius: Appearance.rounding.full
             colBackground: Qt.alpha(Appearance.colors.colLayer0, 0.78)
             colBackgroundHover: Qt.alpha(Appearance.colors.colLayer2, 0.92)
             contentItem: RowLayout { id: gl; anchors.centerIn: parent; spacing: 6
-                MaterialSymbol { text: gbtn.icon; color: Appearance.colors.colOnLayer0 }
+                MaterialSymbol { text: gbtn.glyph; color: Appearance.colors.colOnLayer0 }
                 StyledText { visible: text !== ""; text: gbtn.label; color: Appearance.colors.colOnLayer0; font.pixelSize: Appearance.font.pixelSize.smallie } }
         }
 
@@ -69,18 +69,18 @@ ColumnLayout {
             Behavior on opacity { animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this) }
 
             RowLayout { anchors { top: parent.top; right: parent.right } spacing: 6
-                Glass { icon: "compare"; visible: !!root.item?.source; StyledToolTip { text: "Compare with source" }
+                Glass { glyph: "compare"; visible: !!root.item?.source; StyledToolTip { text: "Compare with source" }
                         downAction: () => compareImg.visible = true; releaseAction: () => compareImg.visible = false }
-                Glass { icon: "open_in_full"; StyledToolTip { text: "Fullscreen" }
+                Glass { glyph: "open_in_full"; StyledToolTip { text: "Fullscreen" }
                         onClicked: Quickshell.execDetached(["xdg-open", root.item.path]) }
             }
             RowLayout { anchors { left: parent.left; bottom: parent.bottom } spacing: 6
-                Glass { visible: !root.isVideo; icon: "edit"; label: "Edit"; onClicked: root.act("image", "edit") }
-                Glass { visible: !root.isVideo; icon: "movie"; label: "Animate"; onClicked: root.act("video") }
-                Glass { visible: !root.isVideo; icon: "hd"; label: "Upscale"; onClicked: root.act("image", "upscale") }
-                Glass { visible: root.isVideo; icon: "auto_fix_high"; label: "Enhance"; onClicked: { MediaGen.kind = "video"; MediaGen.setSource(root.item.path); } }
+                Glass { visible: !root.isVideo; glyph: "edit"; label: "Edit"; onClicked: root.act("image", "edit") }
+                Glass { visible: !root.isVideo; glyph: "movie"; label: "Animate"; onClicked: root.act("video") }
+                Glass { visible: !root.isVideo; glyph: "hd"; label: "Upscale"; onClicked: root.act("image", "upscale") }
+                Glass { visible: root.isVideo; glyph: "auto_fix_high"; label: "Enhance"; onClicked: { MediaGen.kind = "video"; MediaGen.setSource(root.item.path); } }
             }
-            Glass { anchors { right: parent.right; bottom: parent.bottom } icon: "more_horiz"; onClicked: menu.popup() }
+            Glass { anchors { right: parent.right; bottom: parent.bottom } glyph: "more_horiz"; onClicked: menu.popup() }
             RowLayout {   // video player bar
                 visible: root.isVideo
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom; bottomMargin: 46 }
@@ -124,15 +124,25 @@ ColumnLayout {
             MenuSeparator {}
             Entry { textColor: Appearance.m3colors.m3error; text: "Delete"; onTriggered: confirm.show = true }
         }
-        WindowDialog {
+        Loader {
             id: confirm
+            property bool show: false
             anchors.fill: parent
-            backgroundWidth: 300
-            onDismiss: show = false
-            WindowDialogTitle { text: "Delete this " + (root.isVideo ? "video" : "image") + "?" }
-            WindowDialogButtonRow {
-                DialogButton { buttonText: "Cancel"; onClicked: confirm.show = false }
-                DialogButton { buttonText: "Delete"; colEnabled: Appearance.m3colors.m3error; onClicked: { confirm.show = false; MediaGen.deleteItem(root.item.id); } }
+            active: show
+            onActiveChanged: if (active) { item.show = true; item.forceActiveFocus(); }
+            Connections {
+                target: confirm.item
+                function onVisibleChanged() { if (!confirm.item.visible && !confirm.item.show) confirm.show = false; }
+            }
+            sourceComponent: WindowDialog {
+                id: dlg
+                backgroundWidth: 300
+                onDismiss: show = false
+                WindowDialogTitle { text: "Delete this " + (root.isVideo ? "video" : "image") + "?" }
+                WindowDialogButtonRow {
+                    DialogButton { buttonText: "Cancel"; onClicked: dlg.show = false }
+                    DialogButton { buttonText: "Delete"; colEnabled: Appearance.m3colors.m3error; onClicked: { dlg.show = false; MediaGen.deleteItem(root.item.id); } }
+                }
             }
         }
         Keys.onLeftPressed: { const i = MediaGen.items.findIndex(x => x.id === root.item?.id); if (i > 0) MediaGen.selectedId = MediaGen.items[i - 1].id; }

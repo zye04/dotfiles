@@ -54,8 +54,7 @@ ColumnLayout {
                 Item { Layout.fillWidth: true }
                 StyledText {
                     color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller
-                    function mmss(s) { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
-                    text: root.status === "starting" ? "Starting the generator…" : mmss(MediaGen.state.elapsed_s) + " · " + MediaGen.fmtDuration(Math.max(0, (MediaGen.state.eta_s ?? 0) - (MediaGen.state.elapsed_s ?? 0))) + " left"
+                    text: root.status === "starting" ? "Starting the generator…" : C.mmss(MediaGen.state.elapsed_s) + " · " + MediaGen.fmtDuration(Math.max(0, (MediaGen.state.eta_s ?? 0) - (MediaGen.state.elapsed_s ?? 0))) + " left"
                 }
             }
             StyledProgressBar { Layout.fillWidth: true; value: MediaGen.state.progress ?? 0 }

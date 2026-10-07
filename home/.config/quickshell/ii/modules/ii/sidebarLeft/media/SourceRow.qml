@@ -25,8 +25,7 @@ Item {
             anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
             spacing: 10
             MaterialSymbol { text: "add_photo_alternate"; iconSize: Appearance.font.pixelSize.larger; color: Appearance.colors.colOnLayer1 }
-            StyledText { text: MediaGen.kind === "video" ? "Start from an image or a video" : "Start from an image"; color: Appearance.colors.colOnLayer1; font.pixelSize: Appearance.font.pixelSize.smallie }
-            Item { Layout.fillWidth: true }
+            StyledText { Layout.fillWidth: true; elide: Text.ElideRight; text: MediaGen.kind === "video" ? "Start from an image or a video" : "Start from an image"; color: Appearance.colors.colOnLayer1; font.pixelSize: Appearance.font.pixelSize.smallie }
             StyledText { text: "optional · drop or Ctrl V"; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
         }
     }

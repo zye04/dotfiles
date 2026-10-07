@@ -107,7 +107,7 @@ except OSError:
     Connections {
         target: GlobalStates
         function onSidebarLeftOpenChanged() {
-            if (GlobalStates.sidebarLeftOpen && Config.options.ai.wakeOnOpen) Ai.wakeLocalModel();
+            if (GlobalStates.sidebarLeftOpen && Config.options.ai.wakeOnOpen && !MediaGen.busy) Ai.wakeLocalModel();
         }
     }
 
@@ -308,6 +308,7 @@ except OSError:
     }
 
     function handleInput(inputText) {
+        if (MediaGen.busy) return;
         if (inputText.startsWith(root.commandPrefix)) {
             // Handle special commands
             const command = inputText.split(" ")[0].substring(1);
@@ -554,6 +555,13 @@ except OSError:
             id: permissionPopup
             visible: Ai.activePermission !== null
             messageData: Ai.activePermission
+        }
+
+        StyledText {
+            visible: MediaGen.busy
+            Layout.fillWidth: true; Layout.leftMargin: 4
+            text: "Media job running · the agent is available when it finishes"
+            color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller
         }
 
         Rectangle { // Input area
