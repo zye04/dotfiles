@@ -40,7 +40,6 @@ ColumnLayout {
                     id: card
                     required property int index
                     readonly property var reg: win.rev >= 0 ? canvas.regions[index] : null
-                    readonly property bool isCurrent: canvas.current === index
                     enabled: !win.applying
                     readonly property var box: win.rev >= 0 && reg ? reg.box : null
                     readonly property bool needsPrompt: win.rev >= 0 && !!canvas.bbox(index) && !(card.reg?.prompt ?? "").trim().length
@@ -49,8 +48,6 @@ ColumnLayout {
                     implicitHeight: cardCol.implicitHeight + 20
                     radius: Appearance.rounding.small
                     color: Appearance.colors.colLayer2
-                    border.width: isCurrent ? 2 : 0
-                    border.color: Appearance.colors.colPrimary
                     MouseArea { anchors.fill: parent; onPressed: (m) => { canvas.current = card.index; m.accepted = false; } }
                     ColumnLayout {
                         id: cardCol
