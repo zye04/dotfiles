@@ -9,7 +9,7 @@ import "MediaCopy.js" as C
 ColumnLayout {
     id: root
     readonly property string status: MediaGen.state.status ?? "idle"
-    readonly property bool errorShown: status === "error" && (MediaGen.state.error?.retryable ?? false) && (MediaGen.state.job?.id ?? "recovered") !== MediaGen.dismissedJobId
+    readonly property bool errorShown: status === "error" && (MediaGen.state.job?.id ?? "recovered") !== MediaGen.dismissedJobId
     readonly property var btn: C.buttonFor(MediaGen.mode(), MediaGen.srcPath !== "")
     spacing: 8
 
@@ -50,6 +50,14 @@ ColumnLayout {
             Item { Layout.fillWidth: true }
             StyledText { text: MediaGen.fmtDuration(MediaGen.estimateS()); font.pixelSize: Appearance.font.pixelSize.smaller; color: ColorUtils.mix(submitButton.foreground, submitButton.buttonColor, 0.65) }
         }
+    }
+
+    RippleButtonWithIcon {
+        visible: root.status === "error" && (MediaGen.state.error?.retryable ?? false) && !root.errorShown
+        enabled: MediaGen.canRetry()
+        Layout.fillWidth: true
+        materialIcon: "refresh"; mainText: "Retry last failed job"
+        onClicked: MediaGen.retry()
     }
 
     Rectangle {   // run card
@@ -106,7 +114,7 @@ ColumnLayout {
             RowLayout {
                 Item { Layout.fillWidth: true }
                 DialogButton { colEnabled: Appearance.colors.colOnErrorContainer; colBackgroundHover: Appearance.colors.colErrorContainerHover; colRipple: Appearance.colors.colErrorContainerActive; buttonText: "Dismiss"; onClicked: MediaGen.dismissError() }
-                DialogButton { colEnabled: Appearance.colors.colOnErrorContainer; colBackgroundHover: Appearance.colors.colErrorContainerHover; colRipple: Appearance.colors.colErrorContainerActive; buttonText: (MediaGen.state.error?.saved_until_s ?? 0) > 0 ? "Retry from " + MediaGen.state.error.saved_until_s + " s" : "Retry"; onClicked: MediaGen.retry() }
+                DialogButton { colEnabled: Appearance.colors.colOnErrorContainer; colBackgroundHover: Appearance.colors.colErrorContainerHover; colRipple: Appearance.colors.colErrorContainerActive; visible: MediaGen.state.error?.retryable ?? false; enabled: MediaGen.canRetry(); buttonText: (MediaGen.state.error?.saved_until_s ?? 0) > 0 ? "Retry from " + MediaGen.state.error.saved_until_s + " s" : "Retry"; onClicked: MediaGen.retry() }
             }
         }
     }

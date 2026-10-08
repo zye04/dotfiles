@@ -240,8 +240,10 @@ Singleton {
     }
     function stop() { _request("POST", "/stop", {}, null); }
     function dismissError() { dismissedJobId = state.job?.id ?? "recovered"; }
+    function canRetry() { return !busy && connected && !Ai.busy && state.status === "error" && !!state.error?.retryable; }
     function retry(finishOverride) {
-        lastError = "";
+        if (!canRetry()) return;
+        lastError = ""; dismissedJobId = "";
         _request("POST", "/retry", finishOverride ? { finish: finishOverride } : {}, (st, d) => {
             if (st !== 202) { const e = d?.error; lastError = !e ? "Couldn't retry the job" : e === "busy" ? "A job is already running" : typeof e === "string" ? e : JSON.stringify(e); }
         });
