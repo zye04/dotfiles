@@ -100,30 +100,26 @@ Item {
         }
     }
 
-    component Seg: Rectangle {
+    component Seg: ButtonGroup {
         id: seg
         property var model: []
         property int currentIndex: 0
         signal picked(int index)
-        implicitHeight: 38; radius: height / 2; color: Appearance.colors.colLayer2
-        RowLayout {
-            anchors { fill: parent; margins: 3 } spacing: 2
-            Repeater {
-                model: seg.model
-                delegate: Rectangle {
-                    required property int index
-                    required property var modelData
-                    readonly property bool on: index === seg.currentIndex
-                    Layout.fillWidth: true; Layout.fillHeight: true; radius: height / 2
-                    color: on ? Appearance.colors.colSecondaryContainer : "transparent"
-                    Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
-                    RowLayout {
-                        anchors.centerIn: parent; spacing: 6
-                        MaterialSymbol { text: modelData.icon; iconSize: 18; color: on ? Appearance.colors.colOnSecondaryContainer : Appearance.colors.colOnLayer1 }
-                        StyledText { text: modelData.name; color: on ? Appearance.colors.colOnSecondaryContainer : Appearance.colors.colOnLayer1 }
-                    }
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: seg.picked(index) }
-                }
+        spacing: 4
+        uniformCellSizes: true
+        Repeater {
+            model: seg.model
+            delegate: SelectionGroupButton {
+                required property int index
+                required property var modelData
+                Layout.fillWidth: true
+                implicitHeight: 38
+                buttonText: modelData.name
+                buttonIcon: modelData.icon
+                toggled: index === seg.currentIndex
+                leftmost: index === 0
+                rightmost: index === seg.model.length - 1
+                onClicked: seg.picked(index)
             }
         }
     }

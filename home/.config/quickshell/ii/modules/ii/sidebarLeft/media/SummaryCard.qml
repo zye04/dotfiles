@@ -18,7 +18,8 @@ RippleButton {
     implicitHeight: col.implicitHeight + 20
     buttonRadius: Appearance.rounding.normal
     colBackground: Appearance.colors.colLayer1
-    colBackgroundHover: Appearance.colors.colLayer2
+    colBackgroundHover: Appearance.colors.colLayer1Hover
+    colRipple: Appearance.colors.colLayer1Active
     onClicked: openRequested()
     contentItem: ColumnLayout {
         id: col
@@ -30,7 +31,7 @@ RippleButton {
                 text: root.isFinish ? "Finish" : "Advanced <font color=\"" + Appearance.colors.colSubtext + "\">· " + (root.changed ? root.changed + " changed" : MediaGen.quality + " preset") + "</font>"
             }
             Item { Layout.fillWidth: true }
-            MaterialSymbol { text: root.isFinish ? "edit" : "tune"; iconSize: 16; color: Appearance.colors.colSubtext; opacity: root.hovered ? 1 : 0
+            MaterialSymbol { text: root.isFinish ? "edit" : "tune"; iconSize: Appearance.font.pixelSize.normal; color: Appearance.colors.colSubtext; opacity: root.hovered ? 1 : 0
                              Behavior on opacity { animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this) } }
         }
         Repeater {
@@ -39,7 +40,7 @@ RippleButton {
                 required property var modelData
                 readonly property bool on: MediaGen.finish[modelData[0]]
                 Layout.fillWidth: true
-                MaterialSymbol { text: parent.on ? "check" : "remove"; iconSize: 15; color: parent.on ? Appearance.colors.colOnLayer1 : Appearance.colors.colSubtext }
+                MaterialSymbol { text: parent.on ? "check" : "remove"; iconSize: Appearance.font.pixelSize.small; color: parent.on ? Appearance.colors.colOnLayer1 : Appearance.colors.colSubtext }
                 StyledText { text: modelData[1]; font.pixelSize: Appearance.font.pixelSize.smaller; color: parent.on ? Appearance.colors.colOnLayer1 : Appearance.colors.colSubtext; Layout.fillWidth: true }
                 StyledText {
                     font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colSubtext

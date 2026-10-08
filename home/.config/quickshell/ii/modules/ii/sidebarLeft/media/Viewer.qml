@@ -1,5 +1,6 @@
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Controls
@@ -25,10 +26,11 @@ ColumnLayout {
     Rectangle {
         id: frame
         Layout.fillWidth: true; Layout.fillHeight: true
-        radius: Appearance.rounding.normal; color: "#0c0e12"; clip: true
+        radius: Appearance.rounding.normal; color: Appearance.colors.colLayer0; clip: true
         HoverHandler { id: hover }
 
         Image {
+            id: preview
             anchors.fill: parent; fillMode: Image.PreserveAspectFit; asynchronous: true
             visible: !!root.item && !root.isVideo
             source: root.item && !root.isVideo ? "file://" + root.item.path : ""
@@ -47,9 +49,16 @@ ColumnLayout {
 
         ColumnLayout {   // empty state
             anchors.centerIn: parent; visible: !root.item; spacing: 10
-            MaterialSymbol { Layout.alignment: Qt.AlignHCenter; text: "photo_library"; iconSize: 42; color: Appearance.colors.colOutlineVariant }
+            MaterialSymbol { Layout.alignment: Qt.AlignHCenter; text: "photo_library"; iconSize: Appearance.font.pixelSize.hugeass; color: Appearance.colors.colOutlineVariant }
             StyledText { Layout.alignment: Qt.AlignHCenter; text: "Nothing here yet"; color: Appearance.colors.colOnLayer1 }
             StyledText { Layout.alignment: Qt.AlignHCenter; text: "Results land here and in ~/agent/images · ~/agent/videos"; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
+        }
+
+        MaterialLoadingIndicator {
+            anchors.centerIn: parent
+            visible: !!root.item && (root.isVideo ? player.mediaStatus === MediaPlayer.LoadingMedia || player.mediaStatus === MediaPlayer.BufferingMedia : preview.status === Image.Loading)
+            loading: visible
+            implicitSize: Appearance.font.pixelSize.hugeass
         }
 
         component Glass: RippleButton {
@@ -58,11 +67,12 @@ ColumnLayout {
             property string label: ""
             implicitHeight: 34; implicitWidth: label !== "" ? gl.implicitWidth + 24 : 34
             buttonRadius: Appearance.rounding.full
-            colBackground: Qt.alpha(Appearance.colors.colLayer0, 0.78)
-            colBackgroundHover: Qt.alpha(Appearance.colors.colLayer2, 0.92)
+            colBackground: Appearance.m3colors.m3surfaceContainerHigh
+            colBackgroundHover: ColorUtils.mix(Appearance.m3colors.m3surfaceContainerHigh, Appearance.m3colors.m3onSurface, 0.9)
+            colRipple: ColorUtils.mix(Appearance.m3colors.m3surfaceContainerHigh, Appearance.m3colors.m3onSurface, 0.8)
             contentItem: RowLayout { id: gl; anchors.centerIn: parent; spacing: 6
-                MaterialSymbol { text: gbtn.glyph; color: Appearance.colors.colOnLayer0 }
-                StyledText { visible: text !== ""; text: gbtn.label; color: Appearance.colors.colOnLayer0; font.pixelSize: Appearance.font.pixelSize.smallie } }
+                MaterialSymbol { text: gbtn.glyph; color: Appearance.m3colors.m3onSurface }
+                StyledText { visible: text !== ""; text: gbtn.label; color: Appearance.m3colors.m3onSurface; font.pixelSize: Appearance.font.pixelSize.smallie } }
         }
 
         Item {   // hover layer
@@ -75,7 +85,7 @@ ColumnLayout {
             RowLayout { anchors { top: parent.top; right: parent.right } spacing: 6
                 Glass { glyph: "compare"; visible: root.compareSrc !== ""; StyledToolTip { text: "Compare with source" }
                         downAction: () => compareImg.visible = true; releaseAction: () => compareImg.visible = false }
-                Glass { glyph: "open_in_full"; StyledToolTip { text: "Fullscreen" }
+                Glass { glyph: "open_in_full"; StyledToolTip { text: "Open full screen" }
                         onClicked: Quickshell.execDetached(["xdg-open", root.item.path]) }
             }
             RowLayout { anchors { left: parent.left; bottom: parent.bottom } spacing: 6
@@ -87,18 +97,23 @@ ColumnLayout {
                 Glass { visible: root.isVideo; glyph: "auto_fix_high"; label: "Enhance"; onClicked: { MediaGen.kind = "video"; MediaGen.setSource(root.item.path); } }
             }
             Glass { anchors { right: parent.right; bottom: parent.bottom } glyph: "more_horiz"; onClicked: menu.popup() }
-            RowLayout {   // video player bar
+            Rectangle {   // video player bar
                 visible: root.isVideo
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom; bottomMargin: 46 }
-                spacing: 10
-                MaterialSymbol { text: player.playbackState === MediaPlayer.PlayingState ? "pause" : "play_arrow"; color: "white"
-                    MouseArea { anchors.fill: parent; onClicked: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play() } }
-                StyledSlider { Layout.fillWidth: true; from: 0; to: Math.max(1, player.duration); value: player.position; onMoved: player.position = value }
-                StyledText { color: "white"; font.pixelSize: Appearance.font.pixelSize.smaller
-                    function t(ms) { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
-                    text: t(player.position) + " / " + t(player.duration) }
-                MaterialSymbol { text: audio.muted ? "volume_off" : "volume_up"; color: "white"
-                    MouseArea { anchors.fill: parent; onClicked: audio.muted = !audio.muted } }
+                implicitHeight: 40
+                radius: Appearance.rounding.full
+                color: Appearance.m3colors.m3surfaceContainerHigh
+                RowLayout {
+                    anchors { fill: parent; margins: 3; rightMargin: 6 }
+                    spacing: 10
+                    Glass { glyph: player.playbackState === MediaPlayer.PlayingState ? "pause" : "play_arrow"
+                        onClicked: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play() }
+                    StyledSlider { Layout.fillWidth: true; from: 0; to: Math.max(1, player.duration); value: player.position; onMoved: player.position = value }
+                    StyledText { color: Appearance.m3colors.m3onSurface; font.pixelSize: Appearance.font.pixelSize.smaller
+                        function t(ms) { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
+                        text: t(player.position) + " / " + t(player.duration) }
+                    Glass { glyph: audio.muted ? "volume_off" : "volume_up"; onClicked: audio.muted = !audio.muted }
+                }
             }
         }
         Image { id: compareImg; anchors.fill: parent; visible: false; fillMode: Image.PreserveAspectFit; source: root.compareSrc }
@@ -109,26 +124,31 @@ ColumnLayout {
             implicitHeight: 36
             contentItem: StyledText {
                 text: mi.text; font.pixelSize: Appearance.font.pixelSize.small
-                color: mi.textColor; verticalAlignment: Text.AlignVCenter
+                color: mi.enabled ? mi.textColor : Appearance.colors.colSubtext; verticalAlignment: Text.AlignVCenter
             }
             background: Rectangle {
                 radius: Appearance.rounding.small
-                color: mi.highlighted ? Appearance.colors.colLayer3Hover : "transparent"
+                color: mi.down ? Appearance.colors.colLayer3Active : mi.highlighted || mi.hovered ? Appearance.colors.colLayer3Hover : "transparent"
+                Behavior on color { animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this) }
             }
         }
         Menu {
             id: menu
             implicitWidth: 220
             background: Rectangle {
+                StyledRectangularShadow { target: parent }
                 radius: Appearance.rounding.normal
                 color: Appearance.m3colors.m3surfaceContainerHigh
                 border.width: 1; border.color: Appearance.colors.colOutlineVariant
             }
-            Entry { text: "Reuse prompt & settings"; onTriggered: MediaGen.reuse(root.item) }
+            Entry { text: "Reuse prompt and settings"; onTriggered: MediaGen.reuse(root.item) }
             Entry { text: "Copy prompt"; onTriggered: Quickshell.clipboardText = root.item.spec?.prompt ?? "" }
             Entry { text: "Show in folder"; onTriggered: Quickshell.execDetached(["dolphin", "--select", root.item.path]) }
-            MenuSeparator {}
-            Entry { textColor: Appearance.m3colors.m3error; text: "Delete"; onTriggered: confirm.show = true }
+            MenuSeparator {
+                contentItem: Rectangle { implicitHeight: 1; color: Appearance.colors.colOutlineVariant }
+                topPadding: 4; bottomPadding: 4
+            }
+            Entry { textColor: Appearance.colors.colError; text: "Delete"; onTriggered: confirm.show = true }
         }
         Loader {
             id: confirm
@@ -147,7 +167,7 @@ ColumnLayout {
                 WindowDialogTitle { text: "Delete this " + (root.isVideo ? "video" : "image") + "?" }
                 WindowDialogButtonRow {
                     DialogButton { buttonText: "Cancel"; onClicked: dlg.show = false }
-                    DialogButton { buttonText: "Delete"; colEnabled: Appearance.m3colors.m3error; onClicked: { dlg.show = false; MediaGen.deleteItem(root.item.id); } }
+                    DialogButton { buttonText: "Delete"; colEnabled: Appearance.colors.colError; onClicked: { dlg.show = false; MediaGen.deleteItem(root.item.id); } }
                 }
             }
         }

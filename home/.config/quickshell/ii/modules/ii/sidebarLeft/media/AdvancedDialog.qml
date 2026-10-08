@@ -16,7 +16,7 @@ WindowDialog {
         property string tip: ""
         property bool hovered: hover.hovered
         visible: tip !== ""
-        text: "help"; iconSize: 15; color: Appearance.colors.colSubtext
+        text: "help"; iconSize: Appearance.font.pixelSize.small; color: Appearance.colors.colSubtext
         HoverHandler { id: hover }
         StyledToolTip { text: parent.tip.replace(/(.{1,48})(\s+|$)/g, "$1\n").trim() }  // shared tooltip has no max width
     }
@@ -37,7 +37,7 @@ WindowDialog {
         Layout.fillWidth: true; spacing: 2
         RowLayout {
             StyledText { text: sr.label; font.pixelSize: Appearance.font.pixelSize.smallie; color: Appearance.colors.colOnLayer1 }
-            Rectangle { width: 6; height: 6; radius: 3; color: Appearance.colors.colPrimary; visible: MediaGen.adv[sr.key] !== null }
+            Rectangle { width: 6; height: 6; radius: Appearance.rounding.full; color: Appearance.colors.colPrimary; visible: MediaGen.adv[sr.key] !== null }
             Item { Layout.fillWidth: true }
             StyledText { text: sr.step < 1 ? sr.current.toFixed(1) : Math.round(sr.current); font.pixelSize: Appearance.font.pixelSize.smallie }
         }
@@ -61,7 +61,7 @@ WindowDialog {
         Layout.fillWidth: true; spacing: 6
         RowLayout {
             StyledText { text: "Seed"; font.pixelSize: Appearance.font.pixelSize.smallie }
-            Rectangle { width: 6; height: 6; radius: 3; color: Appearance.colors.colPrimary; visible: MediaGen.adv.seed !== null }
+            Rectangle { width: 6; height: 6; radius: Appearance.rounding.full; color: Appearance.colors.colPrimary; visible: MediaGen.adv.seed !== null }
             Item { Layout.fillWidth: true }
             StyledText { text: "same seed + settings = same result"; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
         }
@@ -69,10 +69,10 @@ WindowDialog {
             spacing: 6
             Rectangle { Layout.fillWidth: true; implicitHeight: 32; radius: Appearance.rounding.full; color: Appearance.colors.colLayer2
                 StyledText { anchors { verticalCenter: parent.verticalCenter; left: parent.left; leftMargin: 12 } text: MediaGen.adv.seed ?? "random"; color: Appearance.colors.colOnLayer2 } }
-            RippleButton { implicitWidth: 32; implicitHeight: 32; buttonRadius: Appearance.rounding.full; colBackground: Appearance.colors.colLayer2
+            RippleButton { implicitWidth: 32; implicitHeight: 32; buttonRadius: Appearance.rounding.full; colBackground: Appearance.colors.colLayer2; colBackgroundHover: Appearance.colors.colLayer2Hover; colRipple: Appearance.colors.colLayer2Active
                 onClicked: root.setAdv("seed", Math.floor(Math.random() * 2147483647))
                 contentItem: MaterialSymbol { anchors.centerIn: parent; text: "casino" } StyledToolTip { text: "New random seed" } }
-            RippleButton { implicitWidth: 32; implicitHeight: 32; buttonRadius: Appearance.rounding.full; colBackground: Appearance.colors.colLayer2
+            RippleButton { implicitWidth: 32; implicitHeight: 32; buttonRadius: Appearance.rounding.full; colBackground: Appearance.colors.colLayer2; colBackgroundHover: Appearance.colors.colLayer2Hover; colRipple: Appearance.colors.colLayer2Active
                 onClicked: root.setAdv("seed", null)
                 contentItem: MaterialSymbol { anchors.centerIn: parent; text: "shuffle" } StyledToolTip { text: "Back to random" } }
         }
@@ -93,44 +93,21 @@ WindowDialog {
                 StyledText { text: ({ image: "Image generator", video: "Video generator", upscaler: "Upscaler", interpolation: "Frame interpolation" })[mr.modelData] ?? mr.modelData
                              font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colSubtext }
                 HelpIcon { tip: mr.info.options[MediaGen.modelKey(mr.modelData)]?.help ?? "" }
-                Rectangle { width: 6; height: 6; radius: 3; color: Appearance.colors.colPrimary; visible: MediaGen.adv.models?.[mr.modelData] !== undefined }
+                Rectangle { width: 6; height: 6; radius: Appearance.rounding.full; color: Appearance.colors.colPrimary; visible: MediaGen.adv.models?.[mr.modelData] !== undefined }
                 Item { Layout.fillWidth: true }
                 StyledText { visible: mr.keys.length < 2; text: mr.curLabel; font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colOnLayer1 }
-                RippleButton {
-                    id: pill
+                StyledComboBox {
+                    id: modelPicker
                     visible: mr.keys.length >= 2
-                    implicitHeight: 32; implicitWidth: pillRow.implicitWidth + 22
-                    buttonRadius: Appearance.rounding.full
-                    colBackground: Appearance.colors.colLayer2
-                    colBackgroundHover: Appearance.colors.colLayer2Hover
-                    onClicked: menu.open()
-                    contentItem: RowLayout {
-                        id: pillRow; anchors.centerIn: parent; spacing: 4
-                        StyledText { text: mr.curLabel; color: Appearance.colors.colOnLayer2; font.pixelSize: Appearance.font.pixelSize.smallie }
-                        MaterialSymbol { text: "expand_more"; iconSize: 16; color: Appearance.colors.colSubtext }
-                    }
-                    Popup {
-                        id: menu
-                        x: pill.width - width; y: pill.height + 6
-                        padding: 4
-                        background: Rectangle { radius: Appearance.rounding.small; color: Appearance.colors.colLayer2; border.width: 0
-                            StyledRectangularShadow { target: parent } }
-                        contentItem: ColumnLayout {
-                            spacing: 0
-                            Repeater {
-                                model: mr.keys
-                                delegate: RippleButton {
-                                    required property string modelData
-                                    Layout.fillWidth: true; implicitHeight: 32; implicitWidth: optText.implicitWidth + 20
-                                    buttonRadius: 8
-                                    colBackground: modelData === MediaGen.modelKey(mr.modelData) ? Appearance.colors.colSecondaryContainer : "transparent"
-                                    onClicked: { MediaGen.setModel(mr.modelData, modelData); menu.close(); }
-                                    contentItem: StyledText { id: optText; anchors { fill: parent; leftMargin: 10; rightMargin: 10 } verticalAlignment: Text.AlignVCenter
-                                                              text: mr.info.options[modelData].label; font.pixelSize: Appearance.font.pixelSize.smallie; color: Appearance.colors.colOnLayer2 }
-                                }
-                            }
-                        }
-                    }
+                    Layout.preferredWidth: 170; Layout.minimumWidth: 0
+                    implicitHeight: 32
+                    textRole: "label"; valueRole: "key"
+                    model: mr.keys.map(k => ({ key: k, label: mr.info.options[k].label, icon: "" }))
+                    readonly property int selectedIndex: mr.keys.indexOf(MediaGen.modelKey(mr.modelData))
+                    onSelectedIndexChanged: currentIndex = selectedIndex
+                    onModelChanged: Qt.callLater(() => currentIndex = selectedIndex)
+                    Component.onCompleted: currentIndex = selectedIndex
+                    onActivated: (index) => MediaGen.setModel(mr.modelData, mr.keys[index])
                 }
             }
         }
@@ -151,7 +128,7 @@ WindowDialog {
                     Layout.fillWidth: true; spacing: 6
                     StyledText { text: lr.meta?.label ?? lr.modelData; font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colSubtext }
                     HelpIcon { tip: lr.meta?.help ?? "" }
-                    Rectangle { width: 6; height: 6; radius: 3; color: Appearance.colors.colPrimary; visible: MediaGen.adv.loras?.[lr.modelData] !== undefined }
+                    Rectangle { width: 6; height: 6; radius: Appearance.rounding.full; color: Appearance.colors.colPrimary; visible: MediaGen.adv.loras?.[lr.modelData] !== undefined }
                     Item { Layout.fillWidth: true }
                     StyledText { text: lr.val < 0.025 ? "off" : lr.val.toFixed(2); font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colOnLayer1 }
                 }
@@ -166,7 +143,7 @@ WindowDialog {
         }
     }
     WindowDialogButtonRow {
-        DialogButton { buttonText: "Reset"; enabled: root.anyChanged; opacity: enabled ? 1 : 0.35; onClicked: MediaGen.adv = { steps: null, cfg: null, seed: null, models: {}, loras: {} } }
+        DialogButton { buttonText: "Reset"; enabled: root.anyChanged; onClicked: MediaGen.adv = { steps: null, cfg: null, seed: null, models: {}, loras: {} } }
         Item { Layout.fillWidth: true }
         DialogButton { buttonText: "Done"; onClicked: root.show = false }
     }

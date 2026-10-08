@@ -20,20 +20,18 @@ ColumnLayout {
         color: Appearance.colors.colLayer2
         border.width: area.activeFocus ? 2 : 0
         border.color: Appearance.colors.colPrimary
-        TextEdit {
+        StyledTextArea {
             id: area
             anchors { fill: parent; margins: 9; leftMargin: 11; rightMargin: 11 }
             wrapMode: TextEdit.Wrap
             color: Appearance.colors.colOnLayer2
-            font.family: Appearance.font.family.main; font.pixelSize: Appearance.font.pixelSize.smallie
-            selectionColor: Appearance.colors.colPrimaryContainer
+            font.pixelSize: Appearance.font.pixelSize.smallie
+            padding: 0
+            background: null
+            placeholderText: root.copy[2]
             text: MediaGen.prompt
             onTextChanged: if (text !== MediaGen.prompt) MediaGen.prompt = text
             Keys.onPressed: (e) => { if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && (e.modifiers & Qt.ControlModifier)) { MediaGen.submit(); e.accepted = true; } }
-            StyledText {
-                anchors.fill: parent; visible: area.text.length === 0; wrapMode: Text.Wrap
-                text: root.copy[2]; color: Appearance.colors.colSubtext; opacity: 0.6; font.pixelSize: Appearance.font.pixelSize.smallie
-            }
         }
     }
     ColumnLayout {
@@ -48,10 +46,12 @@ ColumnLayout {
                     required property string modelData
                     implicitHeight: 22; implicitWidth: chip.implicitWidth + 18
                     buttonRadius: Appearance.rounding.full
+                    colBackgroundHover: Appearance.colors.colLayer2Hover
+                    colRipple: Appearance.colors.colLayer2Active
                     focusPolicy: Qt.NoFocus   // keep focus in the text area so the chips stay visible
                     onClicked: { const a = area, t = C.appendSuggestion(MediaGen.prompt, modelData); a.forceActiveFocus(); MediaGen.prompt = t; a.cursorPosition = a.length; }
                     contentItem: StyledText { id: chip; anchors.centerIn: parent; text: "+ " + modelData; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
-                    background: Rectangle { radius: Appearance.rounding.full; color: "transparent"; border.width: 1; border.color: Appearance.colors.colOutlineVariant }
+                    Rectangle { anchors.fill: parent; radius: Appearance.rounding.full; color: "transparent"; border.width: 1; border.color: Appearance.colors.colOutlineVariant }
                 }
             }
         }

@@ -1,5 +1,6 @@
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
@@ -15,32 +16,39 @@ ColumnLayout {
     RowLayout {   // swap note
         visible: root.status === "idle" && MediaGen.agentLoaded
         Layout.leftMargin: 2; spacing: 6
-        MaterialSymbol { text: "swap_horiz"; iconSize: 16; color: Appearance.colors.colSubtext }
+        MaterialSymbol { text: "swap_horiz"; iconSize: Appearance.font.pixelSize.normal; color: Appearance.colors.colSubtext }
         StyledText { text: "The agent model unloads first · it reloads on your next message"; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
     }
     StyledText {   // submit rejection (422/409) or service offline
         visible: MediaGen.lastError !== "" || !MediaGen.connected
         Layout.fillWidth: true; wrapMode: Text.Wrap; Layout.leftMargin: 2
-        text: !MediaGen.connected ? "Media service is not running · systemctl --user start media" : MediaGen.lastError
-        color: Appearance.m3colors.m3error; font.pixelSize: Appearance.font.pixelSize.smaller
+        text: !MediaGen.connected ? "Media service is offline" : MediaGen.lastError
+        color: Appearance.colors.colError; font.pixelSize: Appearance.font.pixelSize.smaller
+        HoverHandler { id: offlineHover }
+        property bool hovered: offlineHover.hovered
+        StyledToolTip { text: !MediaGen.connected ? "Start it with systemctl --user start media.service" : MediaGen.lastError }
     }
 
     RippleButton {   // main button
+        id: submitButton
         visible: root.status === "idle" || root.status === "error" && !root.errorShown
         Layout.fillWidth: true; implicitHeight: 46
         enabled: MediaGen.canSubmit()
-        opacity: enabled ? 1 : 0.4
+        opacity: 1
+        buttonColor: enabled ? (down ? Appearance.colors.colPrimaryContainerActive : hovered ? colBackgroundHover : colBackground) : Appearance.colors.colLayer2Disabled
+        readonly property color foreground: enabled ? Appearance.colors.colOnPrimaryContainer : Appearance.colors.colOnLayer2Disabled
         buttonRadius: Appearance.rounding.normal
         colBackground: Appearance.colors.colPrimaryContainer
         colBackgroundHover: Appearance.colors.colPrimaryContainerHover
+        colRipple: Appearance.colors.colPrimaryContainerActive
         onClicked: MediaGen.submit()
         StyledToolTip { text: Ai.busy ? "The agent is replying…" : "Ctrl + Enter" }
         contentItem: RowLayout {
             anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
-            MaterialSymbol { text: root.btn[0]; fill: 1; color: Appearance.colors.colOnPrimaryContainer }
-            StyledText { text: root.btn[1]; font.pixelSize: Appearance.font.pixelSize.smallie; font.weight: Font.Medium; color: Appearance.colors.colOnPrimaryContainer }
+            MaterialSymbol { text: root.btn[0]; fill: 1; color: submitButton.foreground }
+            StyledText { text: root.btn[1]; font.pixelSize: Appearance.font.pixelSize.smallie; font.weight: Font.Medium; color: submitButton.foreground }
             Item { Layout.fillWidth: true }
-            StyledText { text: MediaGen.fmtDuration(MediaGen.estimateS()); opacity: 0.65; font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colOnPrimaryContainer }
+            StyledText { text: MediaGen.fmtDuration(MediaGen.estimateS()); font.pixelSize: Appearance.font.pixelSize.smaller; color: ColorUtils.mix(submitButton.foreground, submitButton.buttonColor, 0.65) }
         }
     }
 
@@ -65,10 +73,11 @@ ColumnLayout {
                     required property var modelData
                     spacing: 8
                     MaterialSymbol {
-                        text: modelData.state === "done" ? "check_circle" : modelData.state === "now" ? "progress_activity" : "radio_button_unchecked"
-                        iconSize: 16; color: modelData.state === "next" ? Appearance.colors.colSubtext : Appearance.colors.colOnLayer1
-                        RotationAnimation on rotation { running: modelData.state === "now"; from: 0; to: 360; duration: 1200; loops: Animation.Infinite }
+                        visible: modelData.state !== "now"
+                        text: modelData.state === "done" ? "check_circle" : "radio_button_unchecked"
+                        iconSize: Appearance.font.pixelSize.normal; color: modelData.state === "next" ? Appearance.colors.colSubtext : Appearance.colors.colOnLayer1
                     }
+                    MaterialLoadingIndicator { visible: modelData.state === "now"; loading: visible; implicitSize: Appearance.font.pixelSize.larger }
                     StyledText { text: modelData.label; font.pixelSize: Appearance.font.pixelSize.smaller
                                  color: modelData.state === "now" ? Appearance.colors.colOnLayer1 : modelData.state === "done" ? Appearance.colors.colOnLayer1 : Appearance.colors.colSubtext }
                 }
@@ -84,20 +93,20 @@ ColumnLayout {
     Rectangle {   // error card
         visible: root.errorShown
         Layout.fillWidth: true; implicitHeight: err.implicitHeight + 24
-        radius: Appearance.rounding.normal; color: Qt.alpha(Appearance.m3colors.m3errorContainer, 0.35)
+        radius: Appearance.rounding.normal; color: Appearance.colors.colErrorContainer
         ColumnLayout {
             id: err; anchors { fill: parent; margins: 12; leftMargin: 14; rightMargin: 14 } spacing: 8
             RowLayout { spacing: 8
-                MaterialSymbol { text: "error"; color: Appearance.m3colors.m3error }
-                StyledText { Layout.fillWidth: true; wrapMode: Text.Wrap; text: MediaGen.state.error?.message ?? ""; color: Appearance.m3colors.m3error; font.weight: Font.Medium } }
+                MaterialSymbol { text: "error"; color: Appearance.colors.colOnErrorContainer }
+                StyledText { Layout.fillWidth: true; wrapMode: Text.Wrap; text: MediaGen.state.error?.message ?? ""; color: Appearance.colors.colOnErrorContainer; font.weight: Font.Medium } }
             StyledText {
-                Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colOnLayer1
+                Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colOnErrorContainer
                 text: ((MediaGen.state.error?.saved_until_s ?? 0) > 0 ? "The first " + MediaGen.state.error.saved_until_s + " s were saved. " : "") + (MediaGen.state.error?.hint ?? "")
             }
             RowLayout {
                 Item { Layout.fillWidth: true }
-                DialogButton { buttonText: "Dismiss"; onClicked: MediaGen.dismissError() }
-                DialogButton { buttonText: (MediaGen.state.error?.saved_until_s ?? 0) > 0 ? "Retry from " + MediaGen.state.error.saved_until_s + " s" : "Retry"; onClicked: MediaGen.retry() }
+                DialogButton { colEnabled: Appearance.colors.colOnErrorContainer; colBackgroundHover: Appearance.colors.colErrorContainerHover; colRipple: Appearance.colors.colErrorContainerActive; buttonText: "Dismiss"; onClicked: MediaGen.dismissError() }
+                DialogButton { colEnabled: Appearance.colors.colOnErrorContainer; colBackgroundHover: Appearance.colors.colErrorContainerHover; colRipple: Appearance.colors.colErrorContainerActive; buttonText: (MediaGen.state.error?.saved_until_s ?? 0) > 0 ? "Retry from " + MediaGen.state.error.saved_until_s + " s" : "Retry"; onClicked: MediaGen.retry() }
             }
         }
     }

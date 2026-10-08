@@ -1,5 +1,6 @@
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Shapes
@@ -29,7 +30,23 @@ Item {
         const i = regions.findIndex(r => r.seedState === "error");
         return i < 0 ? "" : "Couldn't load the saved mask for Area " + (i + 1) + ": " + regions[i].seedError;
     }
-    readonly property var colors: ["#ff5252", "#40c4ff", "#ffd740", "#69f0ae"]
+    readonly property var colors: [Appearance.colors.colPrimary, Appearance.m3colors.m3tertiary, Appearance.colors.colSecondaryContainer, Appearance.m3colors.m3inversePrimary]
+    readonly property var foregrounds: [Appearance.colors.colOnPrimary, Appearance.m3colors.m3onTertiary, Appearance.colors.colOnSecondaryContainer, ColorUtils.colorWithLightness(Appearance.m3colors.m3inversePrimary, ColorUtils.isDark(Appearance.m3colors.m3inversePrimary) ? 0.95 : 0.1)]
+    onColorsChanged: recolor()
+
+    function recolor() {
+        regions.forEach((r, i) => {
+            r.color = colors[i];
+            if (r.seedData) {
+                // RGB is display-only; alpha remains the export mask.
+                const c = Qt.color(r.color), px = r.seedData.data;
+                for (let k = 0; k < px.length; k += 4) {
+                    px[k] = Math.round(c.r * 255); px[k + 1] = Math.round(c.g * 255); px[k + 2] = Math.round(c.b * 255);
+                }
+            }
+        });
+        touch(); repaintAll();
+    }
     readonly property int minBox: 64
     signal changed()
     signal interacted()
@@ -71,8 +88,8 @@ Item {
         if (locked || i < 0 || i >= regions.length) return;
         const next = regions.slice();
         next.splice(i, 1);
-        next.forEach((r, k) => r.color = colors[k]);
         regions = next;
+        recolor();
         current = Math.max(0, Math.min(current, regions.length - 1));
         repaintAll();
         touch();
@@ -398,10 +415,12 @@ Item {
                     y: lay.box ? lay.box[1] : 0
                     width: lay.box ? lay.box[2] - lay.box[0] : 0
                     height: lay.box ? lay.box[3] - lay.box[1] : 0
-                    readonly property color tint: lay.reg ? lay.reg.color : "transparent"
-                    color: Qt.alpha(tint, lay.isCurrent ? 0.09 : 0.04)
-                    radius: Math.min(8 / content.scale, width / 2, height / 2)
-                    opacity: lay.isCurrent ? 1 : 0.6
+                    readonly property color tint: root.colors[lay.index]
+                    color: ColorUtils.transparentize(tint, lay.isCurrent ? 0.91 : 0.96)
+                    border.width: (lay.isCurrent ? 4 : 3) / content.scale
+                    border.color: root.foregrounds[lay.index]
+                    radius: Math.min(Appearance.rounding.verysmall / content.scale, width / 2, height / 2)
+                    opacity: 1
 
                     Shape {
                         anchors.fill: parent
@@ -413,7 +432,7 @@ Item {
                             strokeStyle: ShapePath.DashLine
                             dashPattern: [4, 3]
                             capStyle: ShapePath.FlatCap
-                            readonly property real rr: Math.min(8 / content.scale, boxRect.width / 2, boxRect.height / 2)
+                            readonly property real rr: Math.min(Appearance.rounding.verysmall / content.scale, boxRect.width / 2, boxRect.height / 2)
                             startX: outline.rr; startY: 0
                             PathLine { x: boxRect.width - outline.rr; y: 0 }
                             PathArc { x: boxRect.width; y: outline.rr; radiusX: outline.rr; radiusY: outline.rr }
@@ -426,6 +445,18 @@ Item {
                         }
                     }
 
+                    Rectangle {
+                        x: 10 / content.scale; y: 10 / content.scale
+                        width: 26 / content.scale; height: width
+                        radius: Appearance.rounding.full
+                        color: boxRect.tint
+                        border.width: 1 / content.scale; border.color: root.foregrounds[lay.index]
+                        StyledText {
+                            anchors.centerIn: parent; text: lay.index + 1
+                            color: root.foregrounds[lay.index]
+                            font.pixelSize: Appearance.font.pixelSize.small / content.scale
+                        }
+                    }
                     Repeater {
                         model: lay.isCurrent && boxRect.visible ? 8 : 0
                         delegate: MouseArea {
@@ -445,7 +476,7 @@ Item {
                                 radius: width / 2
                                 color: boxRect.tint
                                 border.width: 1 / content.scale
-                                border.color: Appearance.colors.colOnLayer0
+                                border.color: root.foregrounds[lay.index]
                             }
 
                             onPressed: root.interacted()
@@ -739,8 +770,9 @@ Item {
         x: hx - width / 2; y: hy - height / 2
         radius: width / 2
         color: "transparent"
-        border.width: 1.5
-        border.color: Appearance.colors.colOnLayer0
+        border.width: 3
+        border.color: Appearance.m3colors.m3surface
+        Rectangle { anchors { fill: parent; margins: 1 } radius: width / 2; color: "transparent"; border.width: 1; border.color: Appearance.m3colors.m3onSurface }
         visible: mouseArea.containsMouse && root.imgW > 0 && mouseArea.mode !== "pan" && mouseArea.mode !== "box" && !root.spaceHeld
         enabled: false
     }

@@ -20,21 +20,22 @@ Item {
         visible: MediaGen.srcPath === ""
         buttonRadius: Appearance.rounding.small
         colBackground: Appearance.colors.colLayer1
+        colBackgroundHover: Appearance.colors.colLayer1Hover
+        colRipple: Appearance.colors.colLayer1Active
         onClicked: MediaGen.pickSource()
         contentItem: RowLayout {
             anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
             spacing: 10
             MaterialSymbol { text: "add_photo_alternate"; iconSize: Appearance.font.pixelSize.larger; color: Appearance.colors.colOnLayer1 }
-            StyledText { Layout.fillWidth: MediaGen.kind === "video"; elide: Text.ElideRight; text: MediaGen.kind === "video" ? "Start from an image or a video" : "Start from one or more images"; color: Appearance.colors.colOnLayer1; font.pixelSize: Appearance.font.pixelSize.smallie }
+            StyledText { Layout.fillWidth: true; Layout.minimumWidth: 0; elide: Text.ElideRight; text: MediaGen.kind === "video" ? "Add an image or video" : "Add images"; color: Appearance.colors.colOnLayer1; font.pixelSize: Appearance.font.pixelSize.smallie }
             MaterialSymbol {
                 visible: MediaGen.kind === "image"
-                text: "help"; iconSize: 15; color: Appearance.colors.colSubtext
+                text: "help"; iconSize: Appearance.font.pixelSize.small; color: Appearance.colors.colSubtext
                 HoverHandler { id: helpHover }
                 property bool hovered: helpHover.hovered
                 StyledToolTip { text: "The first image is the one that gets edited.\nAdd up to 3 more as references (people, objects,\nclothes, places) and mention them in the prompt\nas \"image 2\", \"image 3\" and so on." }
             }
-            Item { visible: MediaGen.kind === "image"; Layout.fillWidth: true }
-            StyledText { text: "optional · drop or Ctrl V"; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
+            StyledText { Layout.maximumWidth: 120; elide: Text.ElideRight; text: "Drop · Ctrl + V"; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
         }
     }
     Rectangle {
@@ -46,7 +47,7 @@ Item {
             anchors { fill: parent; margins: 8 }
             spacing: 10
             Rectangle {
-                Layout.preferredWidth: 58; Layout.preferredHeight: 38; radius: 9; clip: true; color: Appearance.colors.colLayer1
+                Layout.preferredWidth: 58; Layout.preferredHeight: 38; radius: Appearance.rounding.verysmall; clip: true; color: Appearance.colors.colLayer1
                 Image { anchors.fill: parent; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 116
                         source: MediaGen.srcKind === "image" ? "file://" + MediaGen.srcPath : "" }
                 MaterialSymbol { anchors.centerIn: parent; visible: MediaGen.srcKind === "video"; text: "movie"; color: Appearance.colors.colOnLayer1 }
