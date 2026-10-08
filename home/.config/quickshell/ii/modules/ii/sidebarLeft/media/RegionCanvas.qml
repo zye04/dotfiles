@@ -25,6 +25,7 @@ Item {
     property bool exporting: false
     readonly property bool locked: frozen || exporting
     readonly property int pendingSeeds: { rev; return regions.filter(r => r.seedState === "pending").length; }
+    readonly property bool renderingMasks: { rev; return regions.some((r, i) => layerAt(i)?.maskDirty || layerAt(i)?.dirty || layerAt(i)?.live); }
     readonly property string seedError: {
         rev;
         const i = regions.findIndex(r => r.seedState === "error");
@@ -146,6 +147,7 @@ Item {
     function bbox(i) {
         const r = regions[i];
         if (!r) return null;
+        if (r.maskBox !== undefined && !layerAt(i)?.dirty && !layerAt(i)?.live) return r.maskBox;
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (const s of r.strokes) {
             if (s.erase) continue;
@@ -350,11 +352,26 @@ Item {
                 property int drawn: 0
                 property bool full: true
                 property bool dirty: false
+                property bool maskDirty: true
                 property alias canvas: canvas
                 anchors.fill: parent
 
+                function measureMask() {
+                    if (!maskDirty || dirty || full || live || !reg || !root.imgW || !root.imgH) return;
+                    maskDirty = false;
+                    const px = canvas.getContext("2d").getImageData(0, 0, root.imgW, root.imgH).data;
+                    let x0 = root.imgW, y0 = root.imgH, x1 = -1, y1 = -1;
+                    for (let y = 0, k = 3; y < root.imgH; y++) for (let x = 0; x < root.imgW; x++, k += 4) {
+                        if (px[k] <= 127) continue;
+                        x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+                    }
+                    lay.reg.maskBox = x1 < 0 ? null : [x0, y0, x1 + 1, y1 + 1];
+                    root.updateAutoBox(lay.index);
+                    root.touch();
+                }
+
                 function repaint(f) {
-                    if (f) full = true;
+                    if (f) { full = true; maskDirty = true; }
                     dirty = true;
                     canvas.requestPaint();
                 }
@@ -365,8 +382,8 @@ Item {
                     Canvas {
                         id: canvas
                         width: root.imgW; height: root.imgH
-                        onWidthChanged: lay.full = true
-                        onHeightChanged: lay.full = true
+                        onWidthChanged: { lay.full = true; lay.maskDirty = true; }
+                        onHeightChanged: { lay.full = true; lay.maskDirty = true; }
 
                         function seg(ctx, s, from, color) {
                             ctx.globalCompositeOperation = s.erase ? "destination-out" : "source-over";
@@ -405,6 +422,8 @@ Item {
                             }
                             lay.dirty = false;
                         }
+                        // Reading pixels inside onPainted can emit painted again.
+                        onPainted: if (lay.maskDirty && !lay.live) Qt.callLater(lay.measureMask)
                     }
                 }
 

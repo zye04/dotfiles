@@ -7,6 +7,10 @@ FocusScope {
     property var promptFocus: null
     onActiveFocusChanged: if (!activeFocus) canvas.spaceHeld = false
 
+    property string initialState: ""
+    readonly property string editSnapshot: { rev; return editState(); }
+    readonly property bool hasEdits: editSnapshot !== initialState
+    onEditSnapshotChanged: confirmCancel = false
     property bool confirmCancel: false
     readonly property int rev: canvas.rev
     readonly property var presetRegion: MediaGen.presets?.region
@@ -25,8 +29,9 @@ FocusScope {
 
     function prompts() { return canvas.regions.map(r => r.prompt ?? ""); }
     function stateJson() { const s = JSON.parse(canvas.stateJson()); s.prompts = prompts(); return JSON.stringify(s); }
+    function editState() { return JSON.stringify(canvas.regions.map(r => ({ seed: r.seed, prompt: r.prompt, strokes: r.strokes, box: r.boxLocked ? canvas.fitBox(r.box) : null }))); }
     function cancel() {
-        if (canvas.regions.some(r => r.strokes.length) && !confirmCancel) { confirmCancel = true; return; }
+        if (hasEdits && !confirmCancel) { confirmCancel = true; return; }
         closing = true; applySerial++;
         canvas.cancelExport();
         canvas.discardMasks(pendingMasks); pendingMasks = [];
@@ -35,7 +40,7 @@ FocusScope {
     }
     function canApply() {
         rev;
-        if (closing || applying || canvas.pendingSeeds || canvas.seedError || MediaGen.busy || !MediaGen.connected || Ai.busy) return false;
+        if (closing || applying || canvas.pendingSeeds || canvas.seedError || canvas.renderingMasks || MediaGen.busy || !MediaGen.connected || Ai.busy) return false;
         const painted = canvas.regions.filter((r, i) => canvas.bbox(i));
         return painted.length > 0 && painted.every(r => (r.prompt ?? "").trim().length);
     }
@@ -50,7 +55,7 @@ FocusScope {
             const regions = list.map(m => ({ mask: m.mask, box: m.box.map(Math.round), prompt: (m.prompt ?? "").trim() }));
             if (!regions.length || regions.some(r => !r.prompt)) {
                 canvas.discardMasks(list);
-                applying = false; MediaGen.lastError = "Give each painted area a prompt"; return;
+                applying = false; MediaGen.lastError = !regions.length ? "Paint an area and describe it" : "Give each painted area a prompt"; return;
             }
             pendingMasks = list;
             win.lastApplied = regions;
@@ -80,6 +85,7 @@ FocusScope {
         MediaGen.regionEditor = win;
         const seed = MediaGen.regionSeed;
         if (seed?.length) seed.forEach(r => canvas.addRegion(r.mask, r.box, r.prompt)); else canvas.addRegion();
+        initialState = editState();
     }
     Component.onDestruction: {
         closing = true; applySerial++;
