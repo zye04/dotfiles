@@ -78,6 +78,7 @@ Item {
                 anchors.fill: parent
                 spacing: 10
                 currentIndex: tabBar.currentIndex
+                interactive: MediaGen.regionPath === ""
 
                 clip: true
                 layer.enabled: true
