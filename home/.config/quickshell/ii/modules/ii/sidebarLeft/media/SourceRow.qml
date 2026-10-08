@@ -13,7 +13,13 @@ Item {
 
     DropArea {
         anchors.fill: parent
-        onDropped: (drop) => { if (drop.hasUrls) for (const u of drop.urls) MediaGen.addImage(decodeURIComponent(u.toString().replace("file://", ""))); }
+        onDropped: (drop) => {
+            if (!drop.hasUrls || MediaGen.busy) return;
+            const paths = drop.urls.map(u => u.toString()).filter(u => u.startsWith("file://") && /\.(png|jpe?g|webp|bmp|gif|mp4|webm|mkv|mov)$/i.test(u));
+            if (!paths.length) return;
+            for (const u of paths) MediaGen.addImage(decodeURIComponent(u.replace("file://", "")));
+            drop.acceptProposedAction();
+        }
     }
     RippleButton {
         anchors.fill: parent
