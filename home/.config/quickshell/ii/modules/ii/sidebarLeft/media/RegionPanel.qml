@@ -128,7 +128,7 @@ ColumnLayout {
             MediaChoice {
                 Layout.fillWidth: true; enabled: !win.applying
                 label: "Quality"; selectedValue: MediaGen.quality
-                options: ["draft", "balanced", "realistic"].map(q => [q, q.charAt(0).toUpperCase() + q.slice(1), MediaGen.qualityHint(q)])
+                options: ["draft", "balanced", "realistic"].map(q => [q, q.charAt(0).toUpperCase() + q.slice(1), ""])
                 onPicked: v => MediaGen.quality = v
             }
             StyledText {
