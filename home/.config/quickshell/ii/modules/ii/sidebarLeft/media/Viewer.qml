@@ -42,7 +42,7 @@ ColumnLayout {
             loops: MediaPlayer.Infinite
             videoOutput: video
             audioOutput: AudioOutput { id: audio; muted: true }
-            onSourceChanged: root.syncPlay()
+            onSourceChanged: Qt.callLater(() => { if (root && typeof root.syncPlay === "function") root.syncPlay(); })
         }
         Connections { target: MediaGen; function onTabVisibleChanged() { root.syncPlay(); } }
         VideoOutput { id: video; anchors.fill: parent; visible: root.isVideo; fillMode: VideoOutput.PreserveAspectFit }
@@ -86,7 +86,7 @@ ColumnLayout {
                 Glass { glyph: "compare"; visible: root.compareSrc !== ""; StyledToolTip { text: "Compare with source" }
                         downAction: () => compareImg.visible = true; releaseAction: () => compareImg.visible = false }
                 Glass { glyph: "open_in_full"; StyledToolTip { text: "Open full screen" }
-                        onClicked: Quickshell.execDetached(["xdg-open", root.item.path]) }
+                        onClicked: Quickshell.execDetached(["mpv", "--fullscreen", "--image-display-duration=inf", "--loop-file=inf", root.item.path]) }
             }
             RowLayout { anchors { left: parent.left; bottom: parent.bottom } spacing: 6
                 Glass { visible: !root.isVideo; glyph: "edit"; label: "Edit"; onClicked: root.act("image", "edit") }
