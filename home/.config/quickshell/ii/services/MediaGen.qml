@@ -171,6 +171,12 @@ Singleton {
         }
     }
     function clearSource() { srcPath = ""; srcKind = ""; refs = []; }
+    // Removing photo 1 promotes photo 2, so the remaining photos keep their order.
+    function removeImage(i) {
+        if (i > 0) { refs = refs.filter((_, j) => j !== i - 1); return; }
+        if (!refs.length) { clearSource(); return; }
+        const rest = refs.slice(1); setSource(refs[0]); refs = rest;
+    }
     // User-added images: the first becomes the source, later ones (image mode only) become references.
     function addImage(path) {
         const isImg = !["mp4", "webm", "mkv", "mov"].includes(path.split(".").pop().toLowerCase());

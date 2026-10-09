@@ -9,7 +9,7 @@ import "MediaCopy.js" as C
 // Empty: one quiet row. Filled: thumbnail card with its role. Accepts drops, Ctrl+V (handled by MediaStudio) and click → picker.
 Item {
     id: root
-    implicitHeight: MediaGen.srcPath === "" ? 40 : 56
+    implicitHeight: MediaGen.srcPath === "" ? 40 : MediaGen.refs.length ? 70 : 56
     Behavior on implicitHeight { animation: Appearance.animation.elementMove.numberAnimation.createObject(this) }
 
     DropArea {
@@ -40,7 +40,7 @@ Item {
                 text: "help"; iconSize: Appearance.font.pixelSize.small; color: Appearance.colors.colSubtext
                 HoverHandler { id: helpHover }
                 property bool hovered: helpHover.hovered
-                StyledToolTip { text: "The first image is the one that gets edited.\nAdd up to 3 more as references (people, objects,\nclothes, places) and mention them in the prompt\nas \"image 2\", \"image 3\" and so on." }
+                StyledToolTip { text: "The first image is the one that gets edited.\nAdd up to 3 more as references (people, objects,\nclothes, places) and mention them in the prompt\nas \"photo 2\", \"photo 3\" and so on." }
             }
             StyledText { Layout.maximumWidth: 120; elide: Text.ElideRight; text: "Drop · Ctrl + V"; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
         }
@@ -54,16 +54,42 @@ Item {
             anchors { fill: parent; margins: 8 }
             spacing: 10
             Rectangle {
+                visible: !MediaGen.refs.length
                 Layout.preferredWidth: 58; Layout.preferredHeight: 38; radius: Appearance.rounding.verysmall; clip: true; color: Appearance.colors.colLayer1
                 Image { anchors.fill: parent; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 116
                         source: MediaGen.srcKind === "image" ? "file://" + MediaGen.srcPath : "" }
                 MaterialSymbol { anchors.centerIn: parent; visible: MediaGen.srcKind === "video"; text: "movie"; color: Appearance.colors.colOnLayer1 }
             }
             ColumnLayout {
+                visible: !MediaGen.refs.length
                 Layout.fillWidth: true; spacing: 0
                 StyledText { Layout.fillWidth: true; elide: Text.ElideMiddle; text: MediaGen.srcPath.split("/").pop(); font.pixelSize: Appearance.font.pixelSize.smallie }
-                StyledText { text: (C.ROLE[MediaGen.mode()] ?? "") + (MediaGen.refs.length ? " · +" + MediaGen.refs.length + (MediaGen.refs.length === 1 ? " reference" : " references") : ""); color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
+                StyledText { text: C.ROLE[MediaGen.mode()] ?? ""; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
             }
+            // Numbered slots, so prompts can say "photo 2" and mean exactly this image.
+            Repeater {
+                model: MediaGen.refs.length ? [MediaGen.srcPath].concat(MediaGen.refs) : []
+                delegate: ColumnLayout {
+                    required property string modelData
+                    required property int index
+                    spacing: 2
+                    Rectangle {
+                        Layout.preferredWidth: 46; Layout.preferredHeight: 34; radius: Appearance.rounding.verysmall; clip: true; color: Appearance.colors.colLayer1
+                        Image { anchors.fill: parent; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 92; source: "file://" + modelData }
+                        HoverHandler { id: slotHover }
+                        RippleButton {
+                            visible: slotHover.hovered && !MediaGen.busy
+                            anchors { top: parent.top; right: parent.right; margins: 2 }
+                            implicitWidth: 18; implicitHeight: 18; buttonRadius: Appearance.rounding.full
+                            colBackground: Appearance.colors.colLayer2
+                            onClicked: MediaGen.removeImage(index)
+                            contentItem: MaterialSymbol { anchors.centerIn: parent; text: "close"; iconSize: Appearance.font.pixelSize.small; color: Appearance.colors.colOnLayer1 }
+                        }
+                    }
+                    StyledText { Layout.alignment: Qt.AlignHCenter; text: "Photo " + (index + 1); color: index === 0 ? Appearance.colors.colOnLayer1 : Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
+                }
+            }
+            Item { visible: MediaGen.refs.length > 0; Layout.fillWidth: true }
             RippleButton {
                 visible: MediaGen.srcKind === "image"
                 implicitWidth: 30; implicitHeight: 30; buttonRadius: Appearance.rounding.full
