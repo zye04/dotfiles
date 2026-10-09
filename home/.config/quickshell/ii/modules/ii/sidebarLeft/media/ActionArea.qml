@@ -56,7 +56,7 @@ ColumnLayout {
         visible: root.status === "error" && (MediaGen.state.error?.retryable ?? false) && !root.errorShown
         enabled: MediaGen.canRetry()
         Layout.fillWidth: true
-        materialIcon: "refresh"; mainText: "Retry last failed job"
+        materialIcon: "refresh"; mainText: "Retry"
         onClicked: MediaGen.retry()
     }
 
@@ -67,7 +67,7 @@ ColumnLayout {
         ColumnLayout {
             id: run; anchors { fill: parent; margins: 12; leftMargin: 14; rightMargin: 14 } spacing: 9
             RowLayout {
-                StyledText { text: MediaGen.state.title ?? ""; font.weight: Font.Medium; font.pixelSize: Appearance.font.pixelSize.smallie }
+                StyledText { Layout.fillWidth: true; Layout.minimumWidth: 0; elide: Text.ElideRight; text: MediaGen.state.title ?? ""; font.weight: Font.Medium; font.pixelSize: Appearance.font.pixelSize.smallie }
                 Item { Layout.fillWidth: true }
                 StyledText {
                     color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller
@@ -86,7 +86,7 @@ ColumnLayout {
                         iconSize: Appearance.font.pixelSize.normal; color: modelData.state === "next" ? Appearance.colors.colSubtext : Appearance.colors.colOnLayer1
                     }
                     MaterialLoadingIndicator { visible: modelData.state === "now"; loading: visible; implicitSize: Appearance.font.pixelSize.larger }
-                    StyledText { text: modelData.label; font.pixelSize: Appearance.font.pixelSize.smaller
+                    StyledText { Layout.fillWidth: true; Layout.minimumWidth: 0; wrapMode: Text.Wrap; text: modelData.label; font.pixelSize: Appearance.font.pixelSize.smaller
                                  color: modelData.state === "now" ? Appearance.colors.colOnLayer1 : modelData.state === "done" ? Appearance.colors.colOnLayer1 : Appearance.colors.colSubtext }
                 }
             }

@@ -16,8 +16,8 @@ Item {
         anchors.fill: parent
         onDropped: (drop) => {
             if (!drop.hasUrls || MediaGen.busy) return;
-            const paths = drop.urls.map(u => u.toString()).filter(u => u.startsWith("file://") && /\.(png|jpe?g|webp|bmp|gif|mp4|webm|mkv|mov)$/i.test(u));
-            if (!paths.length) return;
+            const paths = drop.urls.map(u => u.toString()).filter(u => u.startsWith("file://") && /\.(png|jpe?g|webp|mp4|webm|mkv|mov)$/i.test(u));
+            if (!paths.length) { MediaGen.lastError = "Choose a PNG, JPG or WebP image, or an MP4, WebM, MKV or MOV video"; return; }
             for (const u of paths) MediaGen.addImage(decodeURIComponent(u.replace("file://", "")));
             drop.acceptProposedAction();
         }
@@ -40,7 +40,7 @@ Item {
                 text: "help"; iconSize: Appearance.font.pixelSize.small; color: Appearance.colors.colSubtext
                 HoverHandler { id: helpHover }
                 property bool hovered: helpHover.hovered
-                StyledToolTip { text: "The first image is the one that gets edited.\nAdd up to 3 more as references (people, objects,\nclothes, places) and mention them in the prompt\nas \"photo 2\", \"photo 3\" and so on." }
+                StyledToolTip { text: "The first image is the one that gets edited.\nAdd up to 3 more as references (people, objects,\nclothes, places) and mention them in the prompt\nas \"Photo 2\", \"Photo 3\" and so on." }
             }
             StyledText { Layout.maximumWidth: 120; elide: Text.ElideRight; text: "Drop · Ctrl + V"; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
         }
@@ -63,7 +63,7 @@ Item {
             ColumnLayout {
                 visible: !MediaGen.refs.length
                 Layout.fillWidth: true; spacing: 0
-                StyledText { Layout.fillWidth: true; elide: Text.ElideMiddle; text: MediaGen.srcPath.split("/").pop(); font.pixelSize: Appearance.font.pixelSize.smallie }
+                StyledText { Layout.fillWidth: true; elide: Text.ElideMiddle; text: (MediaGen.srcKind === "image" ? "Photo 1 · " : "") + MediaGen.srcPath.split("/").pop(); font.pixelSize: Appearance.font.pixelSize.smallie }
                 StyledText { text: C.ROLE[MediaGen.mode()] ?? ""; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
             }
             // Numbered slots, so prompts can say "photo 2" and mean exactly this image.

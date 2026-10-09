@@ -2,7 +2,7 @@
 
 const COPY = {
     t2i: ["Describe the image", "Subject, setting, light, lens — concrete beats clever.", "Woman in a red wool scarf on an old wooden pier, stormy sea behind her, overcast daylight, 35 mm photo", ["golden hour", "overcast", "35 mm", "shallow depth of field"]],
-    edit: ["What should change?", "Say only the change; everything else stays.", "Make her coat dark green and add light rain", ["keep the face", "same lighting"]],
+    edit: ["What should change?", "Describe the change. Ask to keep the rest the same.", "Make her coat dark green and add light rain", ["keep the face", "same lighting"]],
     t2v: ["Describe the scene and the motion", "Who and where, then one continuous action. Camera moves count.", "Woman in a red scarf walks along a wooden pier toward the camera, wind in her hair, waves hitting the posts, handheld", ["handheld", "slow push in", "wind"]],
     i2v: ["Describe the motion", "The image sets the look; say what moves and how.", "She turns from the sea and walks toward the camera, hair and scarf blowing in the wind", ["handheld", "slow push in", "natural pace"]],
     long: ["Scene and first 5 s", "Who, where and the look hold for the whole clip. End with what happens first.", "Young woman, red scarf, black coat, wooden pier, stormy sea, overcast, handheld 35 mm. She turns from the sea and starts walking toward the camera.", ["handheld", "overcast"]]

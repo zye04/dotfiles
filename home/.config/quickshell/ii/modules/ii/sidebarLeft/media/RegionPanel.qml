@@ -8,6 +8,7 @@ import "MediaCopy.js" as C
 
 ColumnLayout {
     id: root
+    signal advancedRequested()
     required property var editor
     readonly property var win: editor
     readonly property var canvas: editor.canvas
@@ -42,6 +43,7 @@ ColumnLayout {
                     readonly property var reg: win.rev >= 0 ? canvas.regions[index] : null
                     enabled: !win.applying
                     readonly property var box: win.rev >= 0 && reg ? reg.box : null
+                    readonly property bool needsBox: win.rev >= 0 && !win.boxValid(index)
                     readonly property bool needsPrompt: win.rev >= 0 && !!canvas.bbox(index) && !(card.reg?.prompt ?? "").trim().length
                     readonly property bool large: !!box && (box[2] - box[0]) * (box[3] - box[1]) > win.largeAreaPx
                     Layout.fillWidth: true
@@ -95,8 +97,8 @@ ColumnLayout {
                         }
                         StyledText {
                             Layout.fillWidth: true; wrapMode: Text.Wrap
-                            text: "Drag the box over where it should end up"
-                            color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.small
+                            text: card.needsBox ? "Expand the box to include the whole painted area" : "Drag the box over where it should end up"
+                            color: card.needsBox ? Appearance.colors.colError : Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.small
                         }
                         StyledText {
                             visible: card.needsPrompt
@@ -131,6 +133,7 @@ ColumnLayout {
                 options: ["draft", "balanced", "realistic"].map(q => [q, q.charAt(0).toUpperCase() + q.slice(1), ""])
                 onPicked: v => MediaGen.quality = v
             }
+            SummaryCard { kind: "advanced"; Layout.fillWidth: true; Layout.minimumWidth: 0; enabled: !win.applying; onOpenRequested: root.advancedRequested() }
             StyledText {
                 visible: win.perRegionS !== undefined && win.perRegionS !== null
                 Layout.fillWidth: true
@@ -159,7 +162,7 @@ ColumnLayout {
     StyledText {
         Layout.fillWidth: true; wrapMode: Text.Wrap
         visible: !win.canApply() && !win.applying
-        text: canvas.pendingSeeds > 0 ? "Loading saved areas…" : canvas.seedError ? "Reload the saved masks to continue" : !MediaGen.connected ? "Connect the Media service to continue" : MediaGen.busy || Ai.busy ? "Wait for the current job to finish" : win.nPainted === 0 ? "Paint an area and describe it" : "Describe every painted area"
+        text: canvas.pendingSeeds > 0 ? "Loading saved areas…" : canvas.seedError ? "Reload the saved masks to continue" : !MediaGen.connected ? "Connect the Media service to continue" : MediaGen.busy || Ai.busy ? "Wait for the current job to finish" : win.nPainted === 0 ? "Paint an area and describe it" : win.invalidBox ? "Expand the box to include the whole painted area" : "Describe every painted area"
         color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.small
     }
     RowLayout {

@@ -88,7 +88,7 @@ ColumnLayout {
                 Glass { glyph: "open_in_full"; StyledToolTip { text: "Open full screen" }
                         onClicked: Quickshell.execDetached(["mpv", "--fullscreen", "--image-display-duration=inf", "--loop-file=inf", root.item.path]) }
             }
-            RowLayout { anchors { left: parent.left; bottom: parent.bottom } spacing: 6
+            RowLayout { enabled: !MediaGen.busy; anchors { left: parent.left; bottom: parent.bottom } spacing: 6
                 Glass { visible: !root.isVideo; glyph: "edit"; label: "Edit"; onClicked: root.act("image", "edit") }
                 Glass { visible: !root.isVideo; glyph: "movie"; label: "Animate"; onClicked: root.act("video") }
                 Glass { visible: !root.isVideo; glyph: "hd"; label: "Upscale"; onClicked: root.act("image", "upscale") }
@@ -142,7 +142,7 @@ ColumnLayout {
                 border.width: 1; border.color: Appearance.colors.colOutlineVariant
             }
             Entry { visible: !root.isVideo; text: "Open in Studio"; onTriggered: Quickshell.execDetached(["xdg-open", MediaGen.base + "/studio/?item=" + encodeURIComponent(root.item.id)]) }
-            Entry { text: "Reuse prompt and settings"; onTriggered: MediaGen.reuse(root.item) }
+            Entry { enabled: !MediaGen.busy; text: "Reuse prompt and settings"; onTriggered: MediaGen.reuse(root.item) }
             Entry { text: "Copy prompt"; onTriggered: Quickshell.clipboardText = root.item.spec?.prompt ?? "" }
             Entry { text: "Show in folder"; onTriggered: Quickshell.execDetached(["dolphin", "--select", root.item.path]) }
             MenuSeparator {
@@ -183,7 +183,7 @@ ColumnLayout {
         StyledText { Layout.fillWidth: true; elide: Text.ElideRight; text: root.item?.spec?.prompt ?? ""; color: Appearance.colors.colOnLayer1; font.pixelSize: Appearance.font.pixelSize.smaller }
         StyledText {
             color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller
-            text: root.item ? root.item.w + "×" + root.item.h + " · " + (root.item.quality ?? "") + " · "
+            text: root.item ? root.item.w + "×" + root.item.h + " · " + (root.item.quality ? root.item.quality.charAt(0).toUpperCase() + root.item.quality.slice(1) : "") + " · "
                 + (root.isVideo ? Math.round(root.item.duration_s ?? 0) + " s clip" : Math.round(root.item.elapsed_s ?? 0) + " s") : ""
         }
     }

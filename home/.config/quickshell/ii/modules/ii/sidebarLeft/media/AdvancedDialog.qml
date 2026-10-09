@@ -9,6 +9,7 @@ WindowDialog {
     id: root
     backgroundWidth: 400
     onDismiss: show = false
+    readonly property bool generation: MediaGen.regionPath !== "" || !["upscale", "enhance"].includes(MediaGen.mode())
     readonly property bool anyChanged: MediaGen.adv.steps !== null || MediaGen.adv.cfg !== null || MediaGen.adv.seed !== null || Object.keys(MediaGen.adv.models ?? {}).length > 0 || Object.keys(MediaGen.adv.loras ?? {}).length > 0
     function setAdv(k, v) { const a = Object.assign({}, MediaGen.adv); a[k] = v; MediaGen.adv = a; }
 
@@ -22,7 +23,7 @@ WindowDialog {
     }
 
     WindowDialogTitle { text: "Advanced" }
-    WindowDialogParagraph { text: "Overrides the " + MediaGen.quality + " preset for this job only." }
+    WindowDialogParagraph { text: root.generation ? "Overrides the " + MediaGen.quality.charAt(0).toUpperCase() + MediaGen.quality.slice(1) + " preset for this job only." : "Model choices for this job." }
 
     component SliderRow: ColumnLayout {
         id: sr
@@ -55,9 +56,10 @@ WindowDialog {
         }
     }
 
-    SliderRow { key: "steps"; label: "Steps"; from: 4; to: 30; step: 1; lo: "faster"; hi: "more detail" }
-    SliderRow { key: "cfg"; label: "Prompt strength"; from: 1; to: 7; step: 0.5; lo: "looser"; hi: "follows the prompt" }
+    SliderRow { visible: root.generation; key: "steps"; label: "Steps"; from: 4; to: 30; step: 1; lo: "faster"; hi: "more detail" }
+    SliderRow { visible: root.generation; key: "cfg"; label: "Prompt strength"; from: 1; to: 7; step: 0.5; lo: "looser"; hi: "follows the prompt" }
     ColumnLayout {
+        visible: root.generation
         Layout.fillWidth: true; spacing: 6
         RowLayout {
             StyledText { text: "Seed"; font.pixelSize: Appearance.font.pixelSize.smallie }
@@ -126,7 +128,7 @@ WindowDialog {
                 Layout.fillWidth: true; spacing: 0
                 RowLayout {
                     Layout.fillWidth: true; spacing: 6
-                    StyledText { text: lr.meta?.label ?? lr.modelData; font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colSubtext }
+                    StyledText { Layout.fillWidth: true; Layout.minimumWidth: 0; wrapMode: Text.Wrap; text: lr.meta?.label ?? lr.modelData; font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colSubtext }
                     HelpIcon { tip: lr.meta?.help ?? "" }
                     Rectangle { width: 6; height: 6; radius: Appearance.rounding.full; color: Appearance.colors.colPrimary; visible: MediaGen.adv.loras?.[lr.modelData] !== undefined }
                     Item { Layout.fillWidth: true }

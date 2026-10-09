@@ -66,7 +66,7 @@ Item {
             active: !!regionEditor.item
             visible: active
             Layout.preferredWidth: 360; Layout.minimumWidth: 360; Layout.maximumWidth: 360; Layout.fillHeight: true
-            sourceComponent: RegionPanel { editor: regionEditor.item }
+            sourceComponent: RegionPanel { editor: regionEditor.item; onAdvancedRequested: advancedDialog.show = true }
         }
         Loader {
             id: regionEditor

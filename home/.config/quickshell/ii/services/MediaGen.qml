@@ -49,7 +49,7 @@ Singleton {
     function apiMode() { const m = mode(); return m === "long" ? (srcPath === "" ? "t2v" : "i2v") : m; }
     function presetValue(key) {
         if (!presets) return null;
-        if (kind === "image") return key === "steps" ? presets.image[quality].steps : presets.image.cfg;
+        if (regionPath !== "" || kind === "image") return key === "steps" ? presets.image[quality].steps : presets.image.cfg;
         return key === "steps" ? presets.video[quality].steps : presets.video[quality].cfg_hi;
     }
     function itemForPath(path) { return items.find(i => i.path === path) ?? null; }
@@ -120,6 +120,7 @@ Singleton {
     function modelRoles() {
         if (!presets?.models) return [];
         const m = mode(), r = [];
+        if (regionPath !== "") return ["image"];
         if (kind === "image") return m === "upscale" ? ["upscaler"] : ["image"];
         if (m !== "enhance") r.push("video");
         if (finish.upscale) r.push("upscaler");
@@ -138,16 +139,16 @@ Singleton {
         return out;
     }
     function loraMeta(key) {
-        const role = kind === "video" ? "video" : "image";
+        const role = regionPath !== "" || kind !== "video" ? "image" : "video";
         return presets?.models?.[role]?.options?.[modelKey(role)]?.loras?.[key];
     }
     function loraKeys(m = regionEditor ? "region" : apiMode()) {
         if (!["t2i", "edit", "region", "t2v", "i2v"].includes(m)) return [];
         const role = m === "t2v" || m === "i2v" ? "video" : "image";
         const meta = presets?.models?.[role]?.options?.[modelKey(role)]?.loras ?? {};
-        return Object.keys(meta).filter(k => !meta[k].modes || meta[k].modes.includes(m));
+        return Object.keys(meta).filter(k => (!meta[k].modes || meta[k].modes.includes(m)) && (k !== "svi" || m === "i2v" || lengthS > 5));
     }
-    function loraDefault(key) { return kind === "video" ? presets?.video?.[quality]?.loras?.[key] : loraMeta(key)?.default_strength; }
+    function loraDefault(key) { return regionPath === "" && kind === "video" ? presets?.video?.[quality]?.loras?.[key] : loraMeta(key)?.default_strength; }
     function loraValue(key) { return adv.loras?.[key] ?? loraDefault(key) ?? 1; }
     function setLora(key, v) {
         const o = Object.assign({}, adv.loras ?? {}), r = Math.round(v * 20) / 20;

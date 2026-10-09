@@ -21,6 +21,7 @@ FocusScope {
         const v = img?.region ?? img?.edit;
         return typeof v === "object" && v !== null ? v[MediaGen.quality] : v;
     }
+    readonly property bool invalidBox: { rev; return canvas.regions.some((r, i) => !!canvas.bbox(i) && !boxValid(i)); }
     property var lastApplied: null
     property bool applying: false
     property int applySerial: 0
@@ -38,9 +39,13 @@ FocusScope {
         applying = false;
         MediaGen.closeRegionEditor();
     }
+    function boxValid(i) {
+        const b = canvas.bbox(i), box = canvas.regions[i]?.box;
+        return !b || !!box && Math.round(box[0]) <= b[0] && Math.round(box[1]) <= b[1] && Math.round(box[2]) >= b[2] && Math.round(box[3]) >= b[3];
+    }
     function canApply() {
         rev;
-        if (closing || applying || canvas.pendingSeeds || canvas.seedError || canvas.renderingMasks || MediaGen.busy || !MediaGen.connected || Ai.busy) return false;
+        if (closing || applying || invalidBox || canvas.pendingSeeds || canvas.seedError || canvas.renderingMasks || MediaGen.busy || !MediaGen.connected || Ai.busy) return false;
         const painted = canvas.regions.filter((r, i) => canvas.bbox(i));
         return painted.length > 0 && painted.every(r => (r.prompt ?? "").trim().length);
     }
