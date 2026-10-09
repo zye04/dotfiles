@@ -106,7 +106,7 @@ Singleton {
         const m = apiMode();
         const s = { mode: m, prompt: prompt.trim(), shape: shape, quality: quality, finish: finish, advanced: adv };
         const ov = presets?.models ? adv.models ?? {} : {};
-        const lo = (m === "t2v" || m === "i2v") ? adv.loras ?? {} : {};
+        const lo = loraOverrides(m);
         const a = Object.assign({}, adv); delete a.models; delete a.loras;
         if (Object.keys(ov).length) a.models = ov;
         if (Object.keys(lo).length) a.loras = lo;
@@ -132,12 +132,22 @@ Singleton {
         if (key === presets?.models?.[role]?.default) delete o[role]; else o[role] = key;
         adv = Object.assign({}, adv, { models: o });
     }
-    function loraKeys() {
-        const m = apiMode();
-        if (kind !== "video" || (m !== "t2v" && m !== "i2v")) return [];
-        return Object.keys(presets?.models?.video?.options?.[modelKey("video")]?.loras ?? {});
+    function loraOverrides(m) {
+        const out = {}, keys = loraKeys(m);
+        for (const [k, v] of Object.entries(adv.loras ?? {})) if (keys.includes(k)) out[k] = v;
+        return out;
     }
-    function loraDefault(key) { return presets?.video?.[quality]?.loras?.[key]; }
+    function loraMeta(key) {
+        const role = kind === "video" ? "video" : "image";
+        return presets?.models?.[role]?.options?.[modelKey(role)]?.loras?.[key];
+    }
+    function loraKeys(m = regionEditor ? "region" : apiMode()) {
+        if (!["t2i", "edit", "region", "t2v", "i2v"].includes(m)) return [];
+        const role = m === "t2v" || m === "i2v" ? "video" : "image";
+        const meta = presets?.models?.[role]?.options?.[modelKey(role)]?.loras ?? {};
+        return Object.keys(meta).filter(k => !meta[k].modes || meta[k].modes.includes(m));
+    }
+    function loraDefault(key) { return kind === "video" ? presets?.video?.[quality]?.loras?.[key] : loraMeta(key)?.default_strength; }
     function loraValue(key) { return adv.loras?.[key] ?? loraDefault(key) ?? 1; }
     function setLora(key, v) {
         const o = Object.assign({}, adv.loras ?? {}), r = Math.round(v * 20) / 20;
@@ -259,7 +269,9 @@ Singleton {
             return;
         }
         lastError = ""; dismissedJobId = "";
-        const a = Object.assign({}, adv); delete a.loras;
+        const a = Object.assign({}, adv);
+        const lo = loraOverrides("region");
+        if (Object.keys(lo).length) a.loras = lo; else delete a.loras;
         if (!Object.keys(a.models ?? {}).length || !presets?.models) delete a.models;
         const editor = regionEditor, path = regionPath;
         const body = { mode: "region", source: regionPath, quality: quality, advanced: a, regions: regions };

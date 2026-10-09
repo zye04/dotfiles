@@ -121,7 +121,7 @@ WindowDialog {
             delegate: ColumnLayout {
                 id: lr
                 required property string modelData
-                readonly property var meta: MediaGen.presets.models.video.options[MediaGen.modelKey("video")].loras[modelData]
+                readonly property var meta: MediaGen.loraMeta(modelData)
                 readonly property real val: MediaGen.loraValue(modelData)
                 Layout.fillWidth: true; spacing: 0
                 RowLayout {
