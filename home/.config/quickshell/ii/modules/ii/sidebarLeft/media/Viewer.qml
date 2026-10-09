@@ -141,6 +141,7 @@ ColumnLayout {
                 color: Appearance.m3colors.m3surfaceContainerHigh
                 border.width: 1; border.color: Appearance.colors.colOutlineVariant
             }
+            Entry { visible: !root.isVideo; text: "Open in Studio"; onTriggered: Quickshell.execDetached(["xdg-open", MediaGen.base + "/studio/?item=" + encodeURIComponent(root.item.id)]) }
             Entry { text: "Reuse prompt and settings"; onTriggered: MediaGen.reuse(root.item) }
             Entry { text: "Copy prompt"; onTriggered: Quickshell.clipboardText = root.item.spec?.prompt ?? "" }
             Entry { text: "Show in folder"; onTriggered: Quickshell.execDetached(["dolphin", "--select", root.item.path]) }

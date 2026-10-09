@@ -3,6 +3,7 @@ import qs.modules.common
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import "MediaCopy.js" as C
 
 // Empty: one quiet row. Filled: thumbnail card with its role. Accepts drops, Ctrl+V (handled by MediaStudio) and click → picker.
@@ -62,6 +63,16 @@ Item {
                 Layout.fillWidth: true; spacing: 0
                 StyledText { Layout.fillWidth: true; elide: Text.ElideMiddle; text: MediaGen.srcPath.split("/").pop(); font.pixelSize: Appearance.font.pixelSize.smallie }
                 StyledText { text: (C.ROLE[MediaGen.mode()] ?? "") + (MediaGen.refs.length ? " · +" + MediaGen.refs.length + (MediaGen.refs.length === 1 ? " reference" : " references") : ""); color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
+            }
+            RippleButton {
+                visible: MediaGen.srcKind === "image"
+                implicitWidth: 30; implicitHeight: 30; buttonRadius: Appearance.rounding.full
+                onClicked: {
+                    const item = MediaGen.items.find(i => i.path === MediaGen.srcPath);
+                    Quickshell.execDetached(["xdg-open", MediaGen.base + "/studio/?" + (item ? "item=" + encodeURIComponent(item.id) : "source=" + encodeURIComponent(MediaGen.srcPath))]);
+                }
+                contentItem: MaterialSymbol { anchors.centerIn: parent; text: "open_in_browser"; color: Appearance.colors.colSubtext }
+                StyledToolTip { text: "Open in Studio" }
             }
             RippleButton {
                 implicitWidth: 30; implicitHeight: 30; buttonRadius: Appearance.rounding.full
