@@ -17,11 +17,7 @@ ColumnLayout {
 
     // Decode only while the Media tab is on screen.
     function syncPlay() { if (root.isVideo && MediaGen.tabVisible) player.play(); else player.pause(); }
-    function act(kind, task) {
-        MediaGen.setSource(root.item.path);
-        if (kind === "image") { MediaGen.kind = "image"; MediaGen.task = task; }
-        else if (kind === "video") { MediaGen.kind = "video"; MediaGen.setLength(5); }
-    }
+    function act(task) { MediaGen.setSource(root.item.path); MediaGen.task = task; }
 
     Rectangle {
         id: frame
@@ -51,7 +47,7 @@ ColumnLayout {
             anchors.centerIn: parent; visible: !root.item; spacing: 10
             MaterialSymbol { Layout.alignment: Qt.AlignHCenter; text: "photo_library"; iconSize: Appearance.font.pixelSize.hugeass; color: Appearance.colors.colOutlineVariant }
             StyledText { Layout.alignment: Qt.AlignHCenter; text: "Nothing here yet"; color: Appearance.colors.colOnLayer1 }
-            StyledText { Layout.alignment: Qt.AlignHCenter; text: "Results land here and in ~/agent/images · ~/agent/videos"; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
+            StyledText { Layout.alignment: Qt.AlignHCenter; text: "Results land here and in ~/agent/images"; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
         }
 
         MaterialLoadingIndicator {
@@ -89,12 +85,10 @@ ColumnLayout {
                         onClicked: Quickshell.execDetached(["mpv", "--fullscreen", "--image-display-duration=inf", "--loop-file=inf", root.item.path]) }
             }
             RowLayout { enabled: !MediaGen.busy; anchors { left: parent.left; bottom: parent.bottom } spacing: 6
-                Glass { visible: !root.isVideo; glyph: "edit"; label: "Edit"; onClicked: root.act("image", "edit") }
-                Glass { visible: !root.isVideo; glyph: "movie"; label: "Animate"; onClicked: root.act("video") }
-                Glass { visible: !root.isVideo; glyph: "hd"; label: "Upscale"; onClicked: root.act("image", "upscale") }
+                Glass { visible: !root.isVideo; glyph: "edit"; label: "Edit"; onClicked: root.act("edit") }
+                Glass { visible: !root.isVideo; glyph: "hd"; label: "Upscale"; onClicked: root.act("upscale") }
                 Glass { visible: !root.isVideo; glyph: "brush"; label: "Region"; onClicked: MediaGen.openRegionEditor(root.item.path, null)
                         StyledToolTip { text: "Change only a painted area" } }
-                Glass { visible: root.isVideo; glyph: "auto_fix_high"; label: "Enhance"; onClicked: { MediaGen.kind = "video"; MediaGen.setSource(root.item.path); } }
             }
             Glass { anchors { right: parent.right; bottom: parent.bottom } glyph: "more_horiz"; onClicked: menu.popup() }
             Rectangle {   // video player bar
@@ -142,7 +136,7 @@ ColumnLayout {
                 border.width: 1; border.color: Appearance.colors.colOutlineVariant
             }
             Entry { visible: !root.isVideo; text: "Open in Studio"; onTriggered: Quickshell.execDetached(["xdg-open", MediaGen.base + "/studio/?item=" + encodeURIComponent(root.item.id)]) }
-            Entry { enabled: !MediaGen.busy; text: "Reuse prompt and settings"; onTriggered: MediaGen.reuse(root.item) }
+            Entry { enabled: !MediaGen.busy && !root.isVideo; text: "Reuse prompt and settings"; onTriggered: MediaGen.reuse(root.item) }
             Entry { text: "Copy prompt"; onTriggered: Quickshell.clipboardText = root.item.spec?.prompt ?? "" }
             Entry { text: "Show in folder"; onTriggered: Quickshell.execDetached(["dolphin", "--select", root.item.path]) }
             MenuSeparator {

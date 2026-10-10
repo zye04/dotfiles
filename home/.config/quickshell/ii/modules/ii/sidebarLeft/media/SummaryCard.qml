@@ -6,15 +6,12 @@ import QtQuick.Layouts
 
 RippleButton {
     id: root
-    property string kind: "finish"
     signal openRequested()
-    readonly property bool isFinish: kind === "finish"
-    readonly property var finishRows: [["upscale", "Upscale 2×"], ["cinematic24", "Cinematic 24 fps"], ["grain", "Film grain"]]
-    readonly property bool generation: MediaGen.regionPath !== "" || !["upscale", "enhance"].includes(MediaGen.mode())
+    readonly property bool generation: MediaGen.regionPath !== "" || MediaGen.mode() !== "upscale"
     readonly property var modelNotes: Object.entries(MediaGen.adv.models ?? {}).filter(e => MediaGen.modelRoles().includes(e[0]) && MediaGen.presets?.models?.[e[0]]).map(e => MediaGen.presets.models[e[0]].options[e[1]]?.label ?? e[1])
-    readonly property var loraNotes: Object.entries(MediaGen.loraOverrides(MediaGen.regionPath !== "" ? "region" : MediaGen.apiMode())).map(e => (MediaGen.loraMeta(e[0])?.label ?? e[0]) + " " + (e[1] < 0.025 ? "off" : e[1].toFixed(2)))
+    readonly property var loraNotes: Object.entries(MediaGen.loraOverrides(MediaGen.regionPath !== "" ? "region" : MediaGen.mode())).map(e => (MediaGen.loraMeta(e[0])?.label ?? e[0]) + " " + (e[1] < 0.025 ? "off" : e[1].toFixed(2)))
     readonly property int changed: (generation ? ["steps", "cfg", "seed"].filter(k => MediaGen.adv[k] !== null).length : 0) + modelNotes.length + loraNotes.length
-    visible: isFinish ? MediaGen.kind === "video" : MediaGen.modelRoles().length > 0
+    visible: MediaGen.modelRoles().length > 0
     implicitHeight: col.implicitHeight + 20
     buttonRadius: Appearance.rounding.normal
     colBackground: Appearance.colors.colLayer1
@@ -28,28 +25,13 @@ RippleButton {
         RowLayout {
             StyledText {
                 textFormat: Text.StyledText; font.pixelSize: Appearance.font.pixelSize.smallie; font.weight: Font.Medium; color: Appearance.colors.colOnLayer1
-                text: root.isFinish ? "Finish" : "Advanced <font color=\"" + Appearance.colors.colSubtext + "\">· " + (root.changed ? root.changed + " changed" : root.generation ? MediaGen.quality.charAt(0).toUpperCase() + MediaGen.quality.slice(1) + " preset" : "Models") + "</font>"
+                text: "Advanced <font color=\"" + Appearance.colors.colSubtext + "\">· " + (root.changed ? root.changed + " changed" : root.generation ? MediaGen.quality.charAt(0).toUpperCase() + MediaGen.quality.slice(1) + " preset" : "Models") + "</font>"
             }
             Item { Layout.fillWidth: true }
-            MaterialSymbol { text: root.isFinish ? "edit" : "tune"; iconSize: Appearance.font.pixelSize.normal; color: Appearance.colors.colSubtext; opacity: root.hovered ? 1 : 0
+            MaterialSymbol { text: "tune"; iconSize: Appearance.font.pixelSize.normal; color: Appearance.colors.colSubtext; opacity: root.hovered ? 1 : 0
                              Behavior on opacity { animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this) } }
         }
-        Repeater {
-            model: root.isFinish ? root.finishRows : []
-            delegate: RowLayout {
-                required property var modelData
-                readonly property bool on: MediaGen.finish[modelData[0]]
-                Layout.fillWidth: true
-                MaterialSymbol { text: parent.on ? "check" : "remove"; iconSize: Appearance.font.pixelSize.small; color: parent.on ? Appearance.colors.colOnLayer1 : Appearance.colors.colSubtext }
-                StyledText { text: modelData[1]; font.pixelSize: Appearance.font.pixelSize.smaller; color: parent.on ? Appearance.colors.colOnLayer1 : Appearance.colors.colSubtext; Layout.fillWidth: true }
-                StyledText {
-                    font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colSubtext
-                    text: parent.on ? "+" + MediaGen.fmtDuration((MediaGen.presets?.estimates_s.finish_per_beat[modelData[0]] ?? 0) * MediaGen.costBeats()).slice(1) : "off"
-                }
-            }
-        }
         StyledText {
-            visible: !root.isFinish
             Layout.fillWidth: true; wrapMode: Text.Wrap
             textFormat: Text.StyledText; font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colOnLayer1
             readonly property string dim: Appearance.colors.colSubtext

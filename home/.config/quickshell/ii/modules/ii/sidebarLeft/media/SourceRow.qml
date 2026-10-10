@@ -16,8 +16,8 @@ Item {
         anchors.fill: parent
         onDropped: (drop) => {
             if (!drop.hasUrls || MediaGen.busy) return;
-            const paths = drop.urls.map(u => u.toString()).filter(u => u.startsWith("file://") && /\.(png|jpe?g|webp|mp4|webm|mkv|mov)$/i.test(u));
-            if (!paths.length) { MediaGen.lastError = "Choose a PNG, JPG or WebP image, or an MP4, WebM, MKV or MOV video"; return; }
+            const paths = drop.urls.map(u => u.toString()).filter(u => u.startsWith("file://") && /\.(png|jpe?g|webp)$/i.test(u));
+            if (!paths.length) { MediaGen.lastError = "Choose a PNG, JPG or WebP image"; return; }
             for (const u of paths) MediaGen.addImage(decodeURIComponent(u.replace("file://", "")));
             drop.acceptProposedAction();
         }
@@ -34,9 +34,8 @@ Item {
             anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
             spacing: 10
             MaterialSymbol { text: "add_photo_alternate"; iconSize: Appearance.font.pixelSize.larger; color: Appearance.colors.colOnLayer1 }
-            StyledText { Layout.fillWidth: true; Layout.minimumWidth: 0; elide: Text.ElideRight; text: MediaGen.kind === "video" ? "Add an image or video" : "Add images"; color: Appearance.colors.colOnLayer1; font.pixelSize: Appearance.font.pixelSize.smallie }
+            StyledText { Layout.fillWidth: true; Layout.minimumWidth: 0; elide: Text.ElideRight; text: "Add images"; color: Appearance.colors.colOnLayer1; font.pixelSize: Appearance.font.pixelSize.smallie }
             MaterialSymbol {
-                visible: MediaGen.kind === "image"
                 text: "help"; iconSize: Appearance.font.pixelSize.small; color: Appearance.colors.colSubtext
                 HoverHandler { id: helpHover }
                 property bool hovered: helpHover.hovered
@@ -57,13 +56,12 @@ Item {
                 visible: !MediaGen.refs.length
                 Layout.preferredWidth: 58; Layout.preferredHeight: 38; radius: Appearance.rounding.verysmall; clip: true; color: Appearance.colors.colLayer1
                 Image { anchors.fill: parent; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 116
-                        source: MediaGen.srcKind === "image" ? "file://" + MediaGen.srcPath : "" }
-                MaterialSymbol { anchors.centerIn: parent; visible: MediaGen.srcKind === "video"; text: "movie"; color: Appearance.colors.colOnLayer1 }
+                        source: MediaGen.srcPath !== "" ? "file://" + MediaGen.srcPath : "" }
             }
             ColumnLayout {
                 visible: !MediaGen.refs.length
                 Layout.fillWidth: true; spacing: 0
-                StyledText { Layout.fillWidth: true; elide: Text.ElideMiddle; text: (MediaGen.srcKind === "image" ? "Photo 1 · " : "") + MediaGen.srcPath.split("/").pop(); font.pixelSize: Appearance.font.pixelSize.smallie }
+                StyledText { Layout.fillWidth: true; elide: Text.ElideMiddle; text: "Photo 1 · " + MediaGen.srcPath.split("/").pop(); font.pixelSize: Appearance.font.pixelSize.smallie }
                 StyledText { text: C.ROLE[MediaGen.mode()] ?? ""; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
             }
             // Numbered slots, so prompts can say "photo 2" and mean exactly this image.
@@ -91,7 +89,6 @@ Item {
             }
             Item { visible: MediaGen.refs.length > 0; Layout.fillWidth: true }
             RippleButton {
-                visible: MediaGen.srcKind === "image"
                 implicitWidth: 30; implicitHeight: 30; buttonRadius: Appearance.rounding.full
                 onClicked: {
                     const item = MediaGen.items.find(i => i.path === MediaGen.srcPath);

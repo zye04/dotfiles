@@ -11,7 +11,7 @@ Singleton {
     readonly property string base: "http://127.0.0.1:8190"
 
     // server state
-    property var state: ({ status: "idle", stages: [], beats: [] })
+    property var state: ({ status: "idle", stages: [] })
     readonly property bool busy: state.status === "running" || state.status === "starting"
     property bool connected: false
     property var items: []
@@ -20,18 +20,13 @@ Singleton {
     property string lastError: ""
 
     // UI state
-    property string kind: "image"
     property string srcPath: ""
-    property string srcKind: ""
     property var refs: []
     property string task: "edit"
     property string prompt: ""
-    property var beats: []
     property string shape: "16:9"
-    property int lengthS: 5
     property string quality: "realistic"
     property real scale: 2.0
-    property var finish: ({ upscale: true, cinematic24: true, grain: false })
     property var adv: ({ steps: null, cfg: null, seed: null, models: ({}), loras: ({}) })
     property string selectedId: ""
     property string regionPath: ""
@@ -40,55 +35,21 @@ Singleton {
     property bool tabVisible: false          // set by SidebarLeftContent: sidebar open and Media tab current
     property string dismissedJobId: ""
 
-    function mode() {
-        if (kind === "image") return srcPath === "" ? "t2i" : (task === "upscale" ? "upscale" : "edit");
-        if (srcKind === "video") return "enhance";
-        if (lengthS > 5) return "long";
-        return srcPath === "" ? "t2v" : "i2v";
-    }
-    function apiMode() { const m = mode(); return m === "long" ? (srcPath === "" ? "t2v" : "i2v") : m; }
+    function mode() { return srcPath === "" ? "t2i" : (task === "upscale" ? "upscale" : "edit"); }
     function presetValue(key) {
         if (!presets) return null;
-        if (regionPath !== "" || kind === "image") return key === "steps" ? presets.image[quality].steps : presets.image.cfg;
-        return key === "steps" ? presets.video[quality].steps : presets.video[quality].cfg_hi;
+        return key === "steps" ? presets.image[quality].steps : presets.image.cfg;
     }
     function itemForPath(path) { return items.find(i => i.path === path) ?? null; }
-    // Our own videos: 16 fps as generated, 24 fps once Cinematic ran. Anything else is unknown.
-    function itemFps(it) {
-        const sp = it?.spec ?? {};
-        if (sp.finish?.cinematic24) return 24;
-        return sp.mode === "t2v" || sp.mode === "i2v" ? 16 : null;
-    }
-    function srcDuration() { return itemForPath(srcPath)?.duration_s ?? 5; }
-    function costBeats() { return mode() === "enhance" ? Math.max(1, Math.ceil(srcDuration() / 5)) : lengthS / 5; }
     function qualityHint(q) {
         const e = presets?.estimates_s;
-        if (!e) return "";
-        if (kind === "video") return "~" + Math.max(1, Math.round(e.video_per_beat[q] / 60)) + " min / 5 s";
-        return "~" + e.image[q] + " s";
-    }
-    // Resolution a generated video comes out at (mirrors the service's video_dims); null when unknown.
-    function videoDims() {
-        if (!presets) return null;
-        if (srcKind === "video") { const it = itemForPath(srcPath); return it ? [it.w, it.h] : null; }
-        const table = presets.video.res[presets.video[quality].res], it = srcPath !== "" ? itemForPath(srcPath) : null;
-        if (it && it.w && it.h) {
-            const bw = table["16:9"][0], bh = table["16:9"][1], a = it.w / it.h, h = Math.sqrt(bw * bh / a);
-            const r16 = x => Math.max(16, Math.round(x / 16) * 16);
-            return [r16(h * a), r16(h)];
-        }
-        return table[shape] ?? null;
+        return e ? "~" + e.image[q] + " s" : "";
     }
     function selectedItem() { return items.find(i => i.id === selectedId) ?? (items.length ? items[0] : null); }
     function estimateS() {
         if (!presets) return 0;
         const e = presets.estimates_s, m = mode();
-        if (kind === "image") return m === "t2i" ? e.image[quality] : e.image[m];
-        let beatsN = lengthS / 5, gen = e.video_per_beat[quality] * beatsN;
-        if (m === "enhance") { beatsN = costBeats(); gen = 0; }
-        let fin = 0;
-        for (const k of ["upscale", "cinematic24", "grain"]) if (finish[k]) fin += e.finish_per_beat[k];
-        return Math.round(gen + fin * beatsN);
+        return m === "t2i" ? e.image[quality] : e.image[m];
     }
     function fmtDuration(s) {
         if (s < 60) return "~" + Math.max(1, Math.round(s)) + " s";
@@ -97,14 +58,11 @@ Singleton {
     }
     function canSubmit() {
         if (busy || !connected || Ai.busy) return false;
-        const m = mode();
-        if (m === "enhance") return finish.upscale || finish.cinematic24 || finish.grain;
-        if (m === "upscale") return true;
-        return prompt.trim().length > 0;
+        return mode() === "upscale" || prompt.trim().length > 0;
     }
     function buildSpec() {
-        const m = apiMode();
-        const s = { mode: m, prompt: prompt.trim(), shape: shape, quality: quality, finish: finish, advanced: adv };
+        const m = mode();
+        const s = { mode: m, prompt: prompt.trim(), shape: shape, quality: quality, advanced: adv };
         const ov = presets?.models ? adv.models ?? {} : {};
         const lo = loraOverrides(m);
         const a = Object.assign({}, adv); delete a.models; delete a.loras;
@@ -113,19 +71,12 @@ Singleton {
         s.advanced = a;
         if (srcPath !== "") s.source = srcPath;
         if (m === "edit" && refs.length) s.refs = refs;
-        if (m === "t2v" || m === "i2v") { s.length_s = lengthS; s.beats = beats.slice(0, lengthS / 5 - 1).map(b => ({ text: b.text, camera: b.camera || null })); }
         if (m === "upscale") s.scale = scale;
         return s;
     }
     function modelRoles() {
         if (!presets?.models) return [];
-        const m = mode(), r = [];
-        if (regionPath !== "") return ["image"];
-        if (kind === "image") return m === "upscale" ? ["upscaler"] : ["image"];
-        if (m !== "enhance") r.push("video");
-        if (finish.upscale) r.push("upscaler");
-        if (finish.cinematic24) r.push("interpolation");
-        return r;
+        return regionPath === "" && mode() === "upscale" ? ["upscaler"] : ["image"];
     }
     function modelKey(role) { return adv.models?.[role] ?? presets?.models?.[role]?.default ?? ""; }
     function setModel(role, key) {
@@ -139,50 +90,32 @@ Singleton {
         return out;
     }
     function loraMeta(key) {
-        const role = regionPath !== "" || kind !== "video" ? "image" : "video";
-        return presets?.models?.[role]?.options?.[modelKey(role)]?.loras?.[key];
+        return presets?.models?.image?.options?.[modelKey("image")]?.loras?.[key];
     }
-    function loraKeys(m = regionEditor ? "region" : apiMode()) {
-        if (!["t2i", "edit", "region", "t2v", "i2v"].includes(m)) return [];
-        const role = m === "t2v" || m === "i2v" ? "video" : "image";
-        const meta = presets?.models?.[role]?.options?.[modelKey(role)]?.loras ?? {};
-        return Object.keys(meta).filter(k => (!meta[k].modes || meta[k].modes.includes(m)) && (k !== "svi" || m === "i2v" || lengthS > 5));
+    function loraKeys(m = regionEditor ? "region" : mode()) {
+        if (!["t2i", "edit", "region"].includes(m)) return [];
+        const meta = presets?.models?.image?.options?.[modelKey("image")]?.loras ?? {};
+        return Object.keys(meta).filter(k => !meta[k].modes || meta[k].modes.includes(m));
     }
-    function loraDefault(key) { return regionPath === "" && kind === "video" ? presets?.video?.[quality]?.loras?.[key] : loraMeta(key)?.default_strength; }
+    function loraDefault(key) { return loraMeta(key)?.default_strength; }
     function loraValue(key) { return adv.loras?.[key] ?? loraDefault(key) ?? 1; }
     function setLora(key, v) {
         const o = Object.assign({}, adv.loras ?? {}), r = Math.round(v * 20) / 20;
         if (r === loraDefault(key)) delete o[key]; else o[key] = r;
         adv = Object.assign({}, adv, { loras: o });
     }
-    function setLength(s) {
-        lengthS = s;
-        const need = s / 5 - 1, b = beats.slice(0, need);
-        while (b.length < need) b.push({ text: "", camera: "" });
-        beats = b;
-    }
-    function setSource(path) {
-        const ext = path.split(".").pop().toLowerCase();
-        srcKind = ["mp4", "webm", "mkv", "mov"].includes(ext) ? "video" : "image";
-        if (srcKind === "video") kind = "video";
-        srcPath = path; refs = [];
-        if (srcKind === "video") {   // only offer steps that make sense for this source
-            const it = itemForPath(path), fps = itemFps(it);
-            finish = { upscale: it ? it.h < 1440 : true, cinematic24: fps !== null && fps < 24, grain: false };
-        }
-    }
-    function clearSource() { srcPath = ""; srcKind = ""; refs = []; }
+    function setSource(path) { srcPath = path; refs = []; }
+    function clearSource() { srcPath = ""; refs = []; }
     // Removing photo 1 promotes photo 2, so the remaining photos keep their order.
     function removeImage(i) {
         if (i > 0) { refs = refs.filter((_, j) => j !== i - 1); return; }
         if (!refs.length) { clearSource(); return; }
         const rest = refs.slice(1); setSource(refs[0]); refs = rest;
     }
-    // User-added images: the first becomes the source, later ones (image mode only) become references.
+    // User-added images: the first becomes the source, later ones become references.
     function addImage(path) {
-        const isImg = !["mp4", "webm", "mkv", "mov"].includes(path.split(".").pop().toLowerCase());
         if (path === srcPath || refs.includes(path)) return;
-        if (kind === "image" && isImg && srcKind === "image" && srcPath !== "") {
+        if (srcPath !== "") {
             if (refs.length < 3) refs = refs.concat([path]); else lastError = "Up to 3 reference images";
         } else setSource(path);
     }
@@ -190,9 +123,6 @@ Singleton {
         const sp = item.spec ?? {};
         prompt = sp.prompt ?? ""; quality = item.quality ?? quality;
         if (sp.shape) shape = sp.shape;
-        kind = item.kind === "video" ? "video" : "image";
-        if (sp.length_s) setLength(sp.length_s);
-        if (sp.beats) beats = sp.beats.map(b => ({ text: b.text, camera: b.camera ?? "" }));
         adv = { steps: sp.advanced?.steps ?? null, cfg: sp.advanced?.cfg ?? null, seed: item.seed ?? null, models: {}, loras: {} };
         for (const [role, key] of Object.entries(sp.advanced?.models ?? {})) setModel(role, key);
         for (const [k, v] of Object.entries(sp.advanced?.loras ?? {})) setLora(k, v);
@@ -201,7 +131,6 @@ Singleton {
         if (sp.mode === "region") { openRegionEditor(sp.source, sp.regions); return; }
         task = sp.mode === "upscale" ? "upscale" : "edit";
         if (sp.scale) scale = sp.scale;
-        if (sp.finish) finish = Object.assign({}, sp.finish);
     }
     function thumbUrl(id) { return base + "/thumb/" + id; }
 
@@ -258,10 +187,10 @@ Singleton {
     function stop() { _request("POST", "/stop", {}, null); }
     function dismissError() { dismissedJobId = state.job?.id ?? "recovered"; }
     function canRetry() { return !busy && connected && !Ai.busy && state.status === "error" && !!state.error?.retryable; }
-    function retry(finishOverride) {
+    function retry() {
         if (!canRetry()) return;
         lastError = ""; dismissedJobId = "";
-        _request("POST", "/retry", finishOverride ? { finish: finishOverride } : {}, (st, d) => {
+        _request("POST", "/retry", {}, (st, d) => {
             if (st !== 202) { const e = d?.error; lastError = !e ? "Couldn't retry the job" : e === "busy" ? "A job is already running" : typeof e === "string" ? e : JSON.stringify(e); }
         });
     }
@@ -305,7 +234,7 @@ Singleton {
                 } catch (e) {}
             }
         }
-        onExited: { root.connected = false; root.state = ({ status: "idle", stages: [], beats: [] }); reconnect.start(); }
+        onExited: { root.connected = false; root.state = ({ status: "idle", stages: [] }); reconnect.start(); }
     }
     Timer { id: reconnect; interval: 3000; onTriggered: { root.stream.running = true; root.refreshItems(); root.refreshPresets(); } }
 
@@ -331,9 +260,7 @@ Singleton {
         stdout: StdioCollector { onStreamFinished: { for (const p of text.split("\n").map(l => l.trim()).filter(l => l)) root.addImage(p); } }
     }
     function pickSource() {
-        const filter = kind === "video" ? "Images and videos (*.png *.jpg *.jpeg *.webp *.mp4 *.webm *.mkv *.mov)" : "Images (*.png *.jpg *.jpeg *.webp)";
-        pickProc.command = kind === "video" ? ["kdialog", "--getopenfilename", Quickshell.env("HOME") + "/agent", filter]
-                                             : ["kdialog", "--getopenfilename", "--multiple", "--separate-output", Quickshell.env("HOME") + "/agent", filter];
+        pickProc.command = ["kdialog", "--getopenfilename", "--multiple", "--separate-output", Quickshell.env("HOME") + "/agent", "Images (*.png *.jpg *.jpeg *.webp)"];
         pickProc.running = true;
     }
 
@@ -342,8 +269,8 @@ Singleton {
     IpcHandler {
         target: "media"
         function state(): string {
-            return JSON.stringify({ server: root.state, connected: root.connected, kind: root.kind, mode: root.mode(), srcPath: root.srcPath, refs: root.refs,
-                                    prompt: root.prompt, lengthS: root.lengthS, quality: root.quality, selectedId: root.selectedId, regionPath: root.regionPath,
+            return JSON.stringify({ server: root.state, connected: root.connected, mode: root.mode(), srcPath: root.srcPath, refs: root.refs,
+                                    prompt: root.prompt, quality: root.quality, selectedId: root.selectedId, regionPath: root.regionPath,
                                     items: root.items.length, estimate: root.fmtDuration(root.estimateS()), busy: root.busy, tabVisible: root.tabVisible, models: root.adv.models, loras: root.adv.loras });
         }
         function submit(specJson: string): void { root._request("POST", "/jobs", JSON.parse(specJson), null); }
@@ -352,11 +279,9 @@ Singleton {
         function openRegionEditor(path: string): void { root.openRegionEditor(path, null); }
         function closeRegionEditor(): void { root.closeRegionEditor(); }
         function regionState(): string { return root.regionEditor ? root.regionEditor.stateJson() : "{}"; }
-        function setKind(k: string): void { root.kind = k; root.clearSource(); }
         function setSource(path: string): void { root.setSource(path); }
         function addImage(path: string): void { root.addImage(path); }
         function setPrompt(text: string): void { root.prompt = text; }
-        function setLength(s: int): void { root.setLength(s); }
         function setModel(role: string, key: string): void { root.setModel(role, key); }
         function setLora(key: string, value: real): void { root.setLora(key, value); }
     }

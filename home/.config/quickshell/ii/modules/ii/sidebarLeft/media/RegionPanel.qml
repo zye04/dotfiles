@@ -133,7 +133,7 @@ ColumnLayout {
                 options: ["draft", "balanced", "realistic"].map(q => [q, q.charAt(0).toUpperCase() + q.slice(1), ""])
                 onPicked: v => MediaGen.quality = v
             }
-            SummaryCard { kind: "advanced"; Layout.fillWidth: true; Layout.minimumWidth: 0; enabled: !win.applying; onOpenRequested: root.advancedRequested() }
+            SummaryCard { Layout.fillWidth: true; Layout.minimumWidth: 0; enabled: !win.applying; onOpenRequested: root.advancedRequested() }
             StyledText {
                 visible: win.perRegionS !== undefined && win.perRegionS !== null
                 Layout.fillWidth: true

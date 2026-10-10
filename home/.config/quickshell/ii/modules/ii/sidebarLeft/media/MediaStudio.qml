@@ -38,25 +38,17 @@ Item {
                 Behavior on opacity { animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this) }
                 ColumnLayout {
                     id: controls; width: parent.width; spacing: 12
-                    Seg {
-                        Layout.fillWidth: true
-                        model: [{ "icon": "image", "name": "Image" }, { "icon": "movie", "name": "Video" }]
-                        currentIndex: MediaGen.kind === "video" ? 1 : 0
-                        onPicked: (i) => { const k = i === 1 ? "video" : "image"; if (k !== MediaGen.kind) { MediaGen.kind = k; MediaGen.clearSource(); } }
-                    }
                     SourceRow { Layout.fillWidth: true; Layout.minimumWidth: 0 }
                     Seg {
-                        visible: MediaGen.kind === "image" && MediaGen.srcPath !== ""
+                        visible: MediaGen.srcPath !== ""
                         Layout.fillWidth: true
                         model: [{ "icon": "edit", "name": "Edit" }, { "icon": "hd", "name": "Upscale" }, { "icon": "brush", "name": "Region" }]
                         currentIndex: MediaGen.task === "upscale" ? 1 : 0
                         onPicked: (i) => { if (i === 2) MediaGen.openRegionEditor(MediaGen.srcPath, null); else MediaGen.task = i === 1 ? "upscale" : "edit"; }
                     }
                     PromptField { Layout.fillWidth: true; Layout.minimumWidth: 0 }
-                    StoryRows { Layout.fillWidth: true; Layout.minimumWidth: 0 }
                     OptionPills { Layout.fillWidth: true; Layout.minimumWidth: 0 }
-                    SummaryCard { kind: "finish"; Layout.fillWidth: true; Layout.minimumWidth: 0; onOpenRequested: finishDialog.show = true }
-                    SummaryCard { kind: "advanced"; Layout.fillWidth: true; Layout.minimumWidth: 0; onOpenRequested: advancedDialog.show = true }
+                    SummaryCard { Layout.fillWidth: true; Layout.minimumWidth: 0; onOpenRequested: advancedDialog.show = true }
                 }
             }
             ActionArea { Layout.fillWidth: true }
@@ -85,7 +77,6 @@ Item {
         }
     }
 
-    DialogHost { id: finishDialog; sourceComponent: FinishDialog {} }
     DialogHost { id: advancedDialog; sourceComponent: AdvancedDialog {} }
 
     component DialogHost: Loader {
