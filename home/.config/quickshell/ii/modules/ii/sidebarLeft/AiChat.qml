@@ -665,7 +665,7 @@ except OSError:
                                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { permissionPopup.acceptSelected(); event.accepted = true; return; }
                             }
                             if (event.key === Qt.Key_Backtab) {
-                                if (Ai.effectiveMode === "agent") Ai.setAcceptEdits(!Ai.acceptEdits);
+                                if (Ai.effectiveMode === "agent") Ai.cyclePermissionMode();
                                 event.accepted = true;
                             } else if (event.key === Qt.Key_Tab) {
                                 root.acceptSuggestion(root.suggestionList[commandMenu.selectedIndex], false);
@@ -940,10 +940,12 @@ except OSError:
             Layout.preferredHeight: modeHintMetrics.height
             FontMetrics { id: modeHintMetrics; font.family: Appearance.font.family.monospace; font.pixelSize: Ai.chatFontSize }
             text: Ai.effectiveMode !== "agent" ? "" : Ai.planNext ? "⏸ plan mode on" :
-                Ai.acceptEdits ? "⏵⏵ accept edits on (shift+tab to cycle)" : ""
+                Ai.permissionMode === "accept" ? "⏵⏵ accept edits on (shift+tab to cycle)" :
+                Ai.permissionMode === "bypass" ? "⏵⏵ bypass permissions on (shift+tab to cycle)" : ""
             font.family: Appearance.font.family.monospace
             font.pixelSize: Ai.chatFontSize
-            color: Appearance.colors.colSubtext
+            color: Ai.planNext ? Appearance.m3colors.m3tertiary : Ai.permissionMode === "bypass" ? Appearance.m3colors.m3error :
+                Ai.permissionMode === "accept" ? Appearance.m3colors.m3primary : Appearance.colors.colSubtext
         }
     }
 }

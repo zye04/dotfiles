@@ -45,7 +45,8 @@ Singleton {
     readonly property string effectiveMode: mode === "agent" && opencode.connected ? "agent" : "chat"
     property bool agentBusy: false
     property bool planNext: false
-    property bool acceptEdits: false
+    property string permissionMode: "default" // default | accept | bypass; back to default on every new session
+    readonly property bool acceptEdits: permissionMode === "accept"
     property var childSessions: ({})
     property var partMessages: ({})
     property var messageRoles: ({})
@@ -131,6 +132,7 @@ Singleton {
         function setInput(text: string): void { root.inputTextRequested(text); }
         function command(text: string): void { root.commandRequested(text); }
         function newSession(): void { root.newAgentSession(); }
+        function cyclePermissionMode(): void { root.cyclePermissionMode(); }
         function cwd(path: string): void { root.setAgentDirectory(path); }
         function rewind(messageID: string): void { root.rewind(messageID); }
         function unrevert(): void { root.unrevert(); }
@@ -142,7 +144,7 @@ Singleton {
         function state(): string {
             const p = root.activePermission?.requestData;
             return JSON.stringify({
-                mode: root.mode, acceptEdits: root.acceptEdits, frontier: { running: root.frontierRunning, pending: root.frontierPending, model: root.frontierModel, effort: root.frontierEffort }, effectiveMode: root.effectiveMode, connected: opencode.connected, busy: root.agentBusy,
+                mode: root.mode, acceptEdits: root.acceptEdits, permissionMode: root.permissionMode, frontier: { running: root.frontierRunning, pending: root.frontierPending, model: root.frontierModel, effort: root.frontierEffort }, effectiveMode: root.effectiveMode, connected: opencode.connected, busy: root.agentBusy,
                 sessionID: root.sessionID, directory: opencode.directory, waitingForUser: root.waitingForUser,
                 activePermission: p ? { id: p.id, permission: p.permission, patterns: p.patterns } : null,
                 tokenTotal: root.tokenCount.total, liveState: root.liveState, turnStartedAt: root.turnStartedAt, liveOutputTokens: root.liveOutputTokens,
@@ -290,12 +292,16 @@ Singleton {
             if (!ok) { root.addMessage("⎿ could not create agent session", root.interfaceRole); return; }
             root.clearMessages();
             root.agentBusy = false;
-            root.acceptEdits = false;
+            root.permissionMode = "default";
         });
     }
 
     function setAcceptEdits(on) {
-        root.acceptEdits = on;
+        root.permissionMode = on ? "accept" : "default";
+    }
+
+    function cyclePermissionMode() {
+        root.permissionMode = ({ default: "accept", accept: "bypass", bypass: "default" })[root.permissionMode];
     }
 
     function setMode(value) {
@@ -643,7 +649,7 @@ Singleton {
             opencode.sessionID = "";
             root.clearMessages();
             root.agentBusy = false;
-            root.acceptEdits = false;
+            root.permissionMode = "default";
         }
         opencode.directory = normalized;
         Config.options.ai.agentDirectory = normalized;
@@ -1226,7 +1232,7 @@ PY
                 }
                 root.refreshLive();
                 root.lastAgentActivityAt = Date.now();
-                const agent = root.planNext ? "plan" : root.acceptEdits ? "local-accept" : "";
+                const agent = root.planNext ? "plan" : ({ accept: "local-accept", bypass: "local-bypass" })[root.permissionMode] ?? "";
                 root.planNext = false;
                 opencode.prompt(message, root.requestModelName(root.getModel()), root.pendingFilePath, agent, (data, ok) => {
                     if (!ok) { root.agentBusy = false; root.addMessage("⎿ agent prompt failed", root.interfaceRole); }
