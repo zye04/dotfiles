@@ -9,6 +9,8 @@ QtObject {
     property string serverUrl: Config.options?.ai?.agentServerUrl ?? "http://127.0.0.1:4096"
     property string directory: Config.options?.ai?.agentDirectory ?? "/home/zye/agent"
     property string sessionID: ""
+    // Qwen3.8 returns an empty reply to opencode's own title request, so the first prompt names the session.
+    property bool untitled: false
     property bool connected: false
     property bool interrupted: false
     property int retryDelay: 1000
@@ -77,12 +79,17 @@ with open(body_path, 'w') as f:
     function createSession(callback) {
         const path = "/session?directory=" + encodeURIComponent(directory.replace(/^~/, "/home/zye"));
         request("POST", path, {}, (data, ok) => {
-            if (ok && data?.id) root.sessionID = data.id;
+            if (ok && data?.id) { root.sessionID = data.id; root.untitled = true; }
             if (callback) callback(data, ok);
         });
     }
 
     function prompt(text, modelId, imagePath, agent, callback) {
+        if (untitled) {
+            untitled = false;
+            const title = text.trim().split("\n")[0];
+            if (title) request("PATCH", sessionPath(""), { title: title.length > 50 ? title.slice(0, 49) + "…" : title }, null);
+        }
         const parts = [{ type: "text", text }];
         if (imagePath) parts.push({ type: "file", mime: "image/png", url: "" });
         const body = { parts, model: { providerID: "local", modelID: modelId } };
@@ -108,6 +115,7 @@ with open(body_path, 'w') as f:
         request("GET", `/session/${encodeURIComponent(id)}`, null, (session, ok) => {
             if (!ok || !session?.directory) { if (callback) callback(null, false); return; }
             root.sessionID = id;
+            root.untitled = false;
             root.directory = session.directory;
             request("GET", sessionPath("/message"), null, callback);
         });
