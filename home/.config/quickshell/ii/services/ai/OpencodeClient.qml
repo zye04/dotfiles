@@ -76,7 +76,7 @@ with open(body_path, 'w') as f:
 
     function createSession(callback) {
         const path = "/session?directory=" + encodeURIComponent(directory.replace(/^~/, "/home/zye"));
-        request("POST", path, { title: "Sidebar" }, (data, ok) => {
+        request("POST", path, {}, (data, ok) => {
             if (ok && data?.id) root.sessionID = data.id;
             if (callback) callback(data, ok);
         });
