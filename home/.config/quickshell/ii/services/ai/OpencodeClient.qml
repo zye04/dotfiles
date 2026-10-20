@@ -84,7 +84,7 @@ with open(body_path, 'w') as f:
         });
     }
 
-    function prompt(text, modelId, imagePath, agent, callback) {
+    function prompt(text, modelId, imagePath, agent, callback, system) {
         if (untitled) {
             untitled = false;
             const title = text.trim().split("\n")[0];
@@ -94,6 +94,7 @@ with open(body_path, 'w') as f:
         if (imagePath) parts.push({ type: "file", mime: "image/png", url: "" });
         const body = { parts, model: { providerID: "local", modelID: modelId } };
         if (agent) body.agent = agent;
+        if (system) body.system = system;
         request("POST", sessionPath("/prompt_async"), body, callback, imagePath);
     }
 

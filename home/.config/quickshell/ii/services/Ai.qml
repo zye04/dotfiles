@@ -1233,10 +1233,11 @@ PY
                 root.refreshLive();
                 root.lastAgentActivityAt = Date.now();
                 const agent = root.planNext ? "plan" : ({ accept: "local-accept", bypass: "local-bypass" })[root.permissionMode] ?? "";
+                const stateLine = `Sidebar state now: reasoning effort ${root.effort}, permission mode ${root.planNext ? "plan" : root.permissionMode}. This overrides the model line above.`;
                 root.planNext = false;
                 opencode.prompt(message, root.requestModelName(root.getModel()), root.pendingFilePath, agent, (data, ok) => {
                     if (!ok) { root.agentBusy = false; root.addMessage("⎿ agent prompt failed", root.interfaceRole); }
-                });
+                }, stateLine);
                 root.pendingFilePath = "";
             };
             if (!opencode.sessionID) opencode.createSession((data, ok) => { if (ok) send(); else root.addMessage("⎿ agent session failed", root.interfaceRole); });
