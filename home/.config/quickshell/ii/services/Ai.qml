@@ -369,7 +369,7 @@ Singleton {
         } else if (ev.type === "done") {
             root.reviewEnded = true;
             root.reviewOk = true;
-            root.addMessage(`⎿ ${ev.count} proposal${ev.count === 1 ? "" : "s"} · ${Math.round(ev.duration_s)}s · $${ev.cost_usd.toFixed(2)}`, root.interfaceRole);
+            root.addMessage(`⎿ ${ev.count} proposal${ev.count === 1 ? "" : "s"} · ${Math.round(ev.duration_s)}s · $${(ev.cost_usd ?? 0).toFixed(2)}`, root.interfaceRole);
         } else if (ev.type === "error") {
             root.reviewEnded = true;
             root.addMessage(`⎿ review: ${ev.text}`, root.interfaceRole);

@@ -152,7 +152,7 @@ Singleton {
         pendingDraft = null;
         if (Date.now() / 1000 - d.at >= 600) return;
         draftAppliedId = d.id;
-        if (d.prompt != null) { _applying = true; prompt = d.prompt; _applying = false; }
+        if (d.prompt) { _applying = true; prompt = d.prompt; _applying = false; }
         if (d.quality != null && presets?.image?.[d.quality]) quality = d.quality;
         if (d.shape != null) shape = d.shape;
         if (d.model != null && presets?.models?.image?.options?.[d.model]) setModel("image", d.model);
