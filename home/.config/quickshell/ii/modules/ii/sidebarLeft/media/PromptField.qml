@@ -34,6 +34,13 @@ ColumnLayout {
             Keys.onPressed: (e) => { if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && (e.modifiers & Qt.ControlModifier)) { MediaGen.submit(); e.accepted = true; } }
         }
     }
+    StyledText {
+        visible: MediaGen.draftNotice !== ""
+        text: MediaGen.draftNotice
+        color: Appearance.colors.colSubtext
+        font.pixelSize: Appearance.font.pixelSize.smaller
+        Layout.leftMargin: 2
+    }
     ColumnLayout {
         visible: area.activeFocus
         spacing: 6

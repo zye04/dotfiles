@@ -39,7 +39,7 @@ Singleton {
     property var lastPartMessage: null
     property var todoMessage: null
     property var childToolSeen: ({})
-    readonly property bool busy: root.frontierRunning || root.reviewRunning || requester.running || (root.effectiveMode === "agent" && root.agentBusy)
+    readonly property bool busy: root.frontierRunning || root.reviewRunning || root.evalRunning || requester.running || (root.effectiveMode === "agent" && root.agentBusy)
     readonly property int chatFontSize: 13
     property string mode: "agent"
     readonly property string effectiveMode: mode === "agent" && opencode.connected ? "agent" : "chat"
@@ -111,6 +111,11 @@ Singleton {
     property var reviewLines: []
     property var reviewQueue: []
     property var reviewCurrent: null
+    property bool reviewChangedKnowledge: false
+    property bool evalRunning: false
+    property bool evalEnded: false
+    property var evalRow: null
+    property var evalLines: []
     readonly property string reviewPending: reviewCurrent ? reviewCurrent.id : ""
     property QtObject tokenCount: QtObject {
         property int input: -1
@@ -153,11 +158,12 @@ Singleton {
         function planDecision(choice: string): void { root.planDecision(choice); }
         function review(arg: string): void { root.review(arg); }
         function reviewDecision(choice: string): void { root.reviewDecision(choice); }
+        function reviewEval(): void { root.review("eval"); }
         function frontierSet(model: string, effort: string): void { root.setFrontierModel(model); root.setFrontierEffort(effort); }
         function state(): string {
             const p = root.activePermission?.requestData;
             return JSON.stringify({
-                mode: root.mode, acceptEdits: root.acceptEdits, permissionMode: root.permissionMode, frontier: { running: root.frontierRunning, pending: root.frontierPending, model: root.frontierModel, effort: root.frontierEffort }, reviewPending: root.reviewPending, reviewRunning: root.reviewRunning, effectiveMode: root.effectiveMode, connected: opencode.connected, busy: root.agentBusy,
+                mode: root.mode, acceptEdits: root.acceptEdits, permissionMode: root.permissionMode, frontier: { running: root.frontierRunning, pending: root.frontierPending, model: root.frontierModel, effort: root.frontierEffort }, reviewPending: root.reviewPending, reviewRunning: root.reviewRunning, evalRunning: root.evalRunning, effectiveMode: root.effectiveMode, connected: opencode.connected, busy: root.agentBusy,
                 sessionID: root.sessionID, directory: opencode.directory, waitingForUser: root.waitingForUser,
                 activePermission: p ? { id: p.id, permission: p.permission, patterns: p.patterns } : null,
                 tokenTotal: root.tokenCount.total, liveState: root.liveState, turnStartedAt: root.turnStartedAt, liveOutputTokens: root.liveOutputTokens,
@@ -241,6 +247,54 @@ Singleton {
         onExited: root.handleReviewResult(reviewApplyProc.result)
     }
 
+    Process {
+        id: evalProc
+        command: ["python3", "/home/zye/Projects/dev/local-suite/tools/agent-review/eval.py"]
+        stdout: SplitParser { onRead: line => root.handleEvalLine(line) }
+        onExited: {
+            root.evalRunning = false;
+            root.setEvalRow("completed");
+            if (!root.evalEnded) root.addMessage("⎿ eval exited without a result", root.interfaceRole);
+        }
+    }
+
+    function setEvalRow(status) {
+        if (!root.evalRow) return;
+        root.evalRow.toolPart = { tool: "eval", state: { status: status, title: "smoke", output: root.evalLines.join("\n") } };
+        root.evalRow.done = status !== "running";
+    }
+
+    function startEval() {
+        if (root.evalRunning) { root.addMessage("⎿ an eval is already running · Esc to stop", root.interfaceRole); return; }
+        if (root.busy || MediaGen.busy) { root.addMessage("⎿ eval: the agent or a media job is busy", root.interfaceRole); return; }
+        root.evalEnded = false;
+        root.evalLines = [];
+        const row = root.aiMessageComponent.createObject(root, { role: "assistant", partType: "tool", content: "", rawContent: "", done: false });
+        const id = root.idForMessage(row);
+        root.messageByID[id] = row;
+        root.messageIDs = [...root.messageIDs, id];
+        root.evalRow = row;
+        root.setEvalRow("running");
+        root.evalRunning = true;
+        evalProc.running = true;
+    }
+
+    function handleEvalLine(line) {
+        let ev;
+        try { ev = JSON.parse(line); } catch (e) { return; }
+        if (ev.type === "status") {
+            root.evalLines = [...root.evalLines, ev.text];
+            root.setEvalRow("running");
+        } else if (ev.type === "done") {
+            root.evalEnded = true;
+            root.addMessage(`⎿ smoke ${ev.passed}/${ev.total} (last ${ev.prev_passed}/${ev.prev_total}) · ${Math.round(ev.wall_s)}s`, root.interfaceRole);
+            if (ev.regressed.length > 0) root.addMessage(`⎿ regressed: ${ev.regressed.join(", ")}`, root.interfaceRole, true);
+        } else if (ev.type === "error") {
+            root.evalEnded = true;
+            root.addMessage(`⎿ eval: ${ev.text}`, root.interfaceRole);
+        }
+    }
+
     function setReviewRow(status) {
         if (!root.reviewRow) return;
         root.reviewRow.toolPart = { tool: "review", state: { status: status, title: "sonnet", output: root.reviewLines.join("\n") } };
@@ -251,6 +305,7 @@ Singleton {
     function review(arg) {
         if (root.reviewRunning) { root.addMessage("⎿ a review is already running · Esc to stop", root.interfaceRole); return; }
         if (root.reviewDeciding) return;
+        if (String(arg ?? "").trim() === "eval") { root.startEval(); return; }
         if (String(arg ?? "").trim() === "new") { root.startReview(); return; }
         if (root.reviewCurrent) { root.addMessage("⎿ a proposal is awaiting your decision", root.interfaceRole); return; }
         root.reviewList(true);
@@ -277,6 +332,13 @@ Singleton {
     function reviewNext() {
         root.reviewCurrent = root.reviewQueue.length > 0 ? root.reviewQueue[0] : null;
         root.reviewQueue = root.reviewQueue.slice(1);
+        if (!root.reviewCurrent) root.reviewHint();
+    }
+
+    function reviewHint() {
+        if (!root.reviewChangedKnowledge) return;
+        root.reviewChangedKnowledge = false;
+        root.addMessage("⎿ run /review eval to measure the change (~4 min, GPU)", root.interfaceRole);
     }
 
     function startReview() {
@@ -284,6 +346,7 @@ Singleton {
         root.reviewCurrent = null;
         root.reviewEnded = false;
         root.reviewOk = false;
+        root.reviewChangedKnowledge = false;
         root.reviewLines = [];
         const row = root.aiMessageComponent.createObject(root, { role: "assistant", partType: "tool", content: "", rawContent: "", done: false });
         const id = root.idForMessage(row);
@@ -320,6 +383,7 @@ Singleton {
             root.reviewQueue = [];
             root.reviewCurrent = null;
             root.addMessage(`⎿ review stopped · ${left} proposal${left === 1 ? "" : "s"} left pending`, root.interfaceRole);
+            root.reviewHint();
         } else if (c === "1" || c === "apply" || c === "2" || c === "skip") {
             root.reviewDeciding = true;
             reviewApplyProc.result = null;
@@ -333,6 +397,7 @@ Singleton {
         const p = root.reviewCurrent;
         root.reviewDeciding = false;
         if (!p) return;
+        if (res && res.ok && res.status === "applied" && ["skill", "agents", "atlas"].includes(p.kind)) root.reviewChangedKnowledge = true;
         if (res && res.ok) root.addMessage(`⎿ ${res.status === "applied" ? "applied" : "skipped"}: ${p.title}`, root.interfaceRole);
         else { root.addMessage(`⎿ apply failed: ${res?.error ?? "no result"}`, root.interfaceRole); return; }
         root.reviewNext();
@@ -558,7 +623,7 @@ Singleton {
 
     function refreshLive() {
         let state = "idle";
-        if (root.agentBusy || root.frontierRunning || root.reviewRunning) {
+        if (root.agentBusy || root.frontierRunning || root.reviewRunning || root.evalRunning) {
             const last = root.lastPartMessage;
             if (root.waitingForUser) state = "waiting";
             else if (last && !last.done) state = last.partType === "text" ? "streaming" : last.partType === "reasoning" ? "thinking" : "tool";
@@ -802,6 +867,7 @@ Singleton {
     function compact() { opencode.summarize(root.requestModelName(root.getModel()), (data, ok) => root.addMessage(ok ? "⎿ context compacted" : "⎿ compact failed", root.interfaceRole)); }
     function stop() {
         if (root.frontierRunning) frontierProc.signal(15);
+        else if (root.evalRunning) evalProc.signal(15);
         else if (root.reviewRunning) reviewProc.signal(15);
         else if (root.effectiveMode === "agent") {
             const wasBusy = root.agentBusy || root.turnStartedAt > 0;
@@ -919,7 +985,7 @@ Singleton {
         }
     }
 
-    function addMessage(message, role) {
+    function addMessage(message, role, isError = false) {
         if (message.length === 0) return;
         if (role === root.interfaceRole) message = message.replace(/^⎿\s*/, "");
         const aiMessage = aiMessageComponent.createObject(root, {
@@ -928,6 +994,7 @@ Singleton {
             "rawContent": message,
             "thinking": false,
             "done": true,
+            "isError": isError,
         });
         const id = idForMessage(aiMessage);
         root.messageIDs = [...root.messageIDs, id];

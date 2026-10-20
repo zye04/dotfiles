@@ -31,6 +31,7 @@ Item {
         const input = state.input ?? {};
         if (tool === "frontier") return `Frontier(${state.title ?? ""})`;
         if (tool === "review") return `Review(${state.title ?? ""})`;
+        if (tool === "eval") return `Eval(${state.title ?? ""})`;
         if (tool === "task") {
             const agent = String(input.subagent_type ?? "explore");
             return `${agent.charAt(0).toUpperCase() + agent.slice(1)}(${input.description ?? state.title ?? ""})`;
@@ -42,7 +43,7 @@ Item {
         return `${tool}(${path || state.title || ""})`;
     }
     readonly property string summary: {
-        if (tool === "frontier" || tool === "review") return (expanded ? lines : lines.slice(-4)).filter(Boolean).join("\n") || (running ? (tool === "review" ? "reviewing…" : "planning…") : "");
+        if (tool === "frontier" || tool === "review" || tool === "eval") return (expanded ? lines : lines.slice(-4)).filter(Boolean).join("\n") || (running ? (tool === "review" ? "reviewing…" : tool === "eval" ? "starting…" : "planning…") : "");
         if (tool === "task") {
             if (running) return toolUses;
             const first = taskText.split("\n")[0];

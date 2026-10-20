@@ -33,6 +33,7 @@ QtObject {
     property var requestData: ({})
     property string answer: ""
     property var todos: []
+    property bool isError: false // interface line shown in the error colour
     property bool queued: false // user: sent while the agent was busy, not started yet
     property var tools: [] // toolgroup: [{partID, tool, target, status, summary, dir, errorText}]
     property string errorText: "" // tool: first line of the error message

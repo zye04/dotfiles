@@ -34,6 +34,12 @@ Singleton {
     property var regionEditor: null
     property bool tabVisible: false          // set by SidebarLeftContent: sidebar open and Media tab current
     property string dismissedJobId: ""
+    property string draftNotice: ""          // set when the agent filled the form (media_fill); cleared on prompt edit or submit
+    property string draftAppliedId: ""
+    property var pendingDraft: null          // a fresh draft waits here while a job runs or the region editor is open
+    onPromptChanged: draftNotice = ""
+    onBusyChanged: applyPendingDraft()
+    onRegionPathChanged: applyPendingDraft()
 
     function mode() { return srcPath === "" ? "t2i" : (task === "upscale" ? "upscale" : "edit"); }
     function presetValue(key) {
@@ -132,6 +138,27 @@ Singleton {
         task = sp.mode === "upscale" ? "upscale" : "edit";
         if (sp.scale) scale = sp.scale;
     }
+    function considerDraft() {
+        const d = state.draft;
+        pendingDraft = d && d.id !== draftAppliedId && Date.now() / 1000 - d.at < 600 ? d : null;
+        applyPendingDraft();
+    }
+    function applyPendingDraft() {
+        const d = pendingDraft;
+        if (!d || busy || regionPath !== "") return;
+        pendingDraft = null;
+        if (Date.now() / 1000 - d.at >= 600) return;
+        draftAppliedId = d.id;
+        if (d.prompt != null) prompt = d.prompt;
+        if (d.quality != null && presets?.image?.[d.quality]) quality = d.quality;
+        if (d.shape != null) shape = d.shape;
+        if (d.model != null && presets?.models?.image?.options?.[d.model]) setModel("image", d.model);
+        for (const [k, v] of Object.entries(d.loras ?? {})) setLora(k, v);
+        if (d.seed != null) adv = Object.assign({}, adv, { seed: d.seed });
+        if (d.mode === "t2i") { if (d.source == null) clearSource(); }
+        else if (d.mode === "edit" || d.mode === "upscale") { if (d.source != null) setSource(d.source); task = d.mode; }
+        draftNotice = "Filled by the agent · " + Qt.formatTime(new Date(d.at * 1000), "HH:mm");
+    }
     function thumbUrl(id) { return base + "/thumb/" + id; }
 
     // ---- REST (serial queue, one curl at a time)
@@ -181,7 +208,7 @@ Singleton {
     function refreshPresets() { _request("GET", "/presets", null, (st, d) => { if (st === 200) presets = d; }); }
     function submit() {
         if (!canSubmit()) return;
-        lastError = ""; dismissedJobId = "";
+        lastError = ""; dismissedJobId = ""; draftNotice = "";
         _request("POST", "/jobs", buildSpec(), (st, d) => { if (st !== 202) { const e = d?.error; lastError = !e ? "Couldn't start the job" : e === "busy" ? "A job is already running" : typeof e === "string" ? e : JSON.stringify(e); } });
     }
     function stop() { _request("POST", "/stop", {}, null); }
@@ -230,6 +257,7 @@ Singleton {
                     const prev = root.state.status;
                     root.state = JSON.parse(line.slice(5));
                     root.connected = true;
+                    root.considerDraft();
                     if ((prev === "running" || prev === "starting") && root.state.status !== "running" && root.state.status !== "starting") root.refreshItems(root.state.status === "idle");
                 } catch (e) {}
             }
@@ -270,7 +298,7 @@ Singleton {
         target: "media"
         function state(): string {
             return JSON.stringify({ server: root.state, connected: root.connected, mode: root.mode(), srcPath: root.srcPath, refs: root.refs,
-                                    prompt: root.prompt, quality: root.quality, selectedId: root.selectedId, regionPath: root.regionPath,
+                                    prompt: root.prompt, quality: root.quality, shape: root.shape, draftNotice: root.draftNotice, draftAppliedId: root.draftAppliedId, selectedId: root.selectedId, regionPath: root.regionPath,
                                     items: root.items.length, estimate: root.fmtDuration(root.estimateS()), busy: root.busy, tabVisible: root.tabVisible, models: root.adv.models, loras: root.adv.loras });
         }
         function submit(specJson: string): void { root._request("POST", "/jobs", JSON.parse(specJson), null); }

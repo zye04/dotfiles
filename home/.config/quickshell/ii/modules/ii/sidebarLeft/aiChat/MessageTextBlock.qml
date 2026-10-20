@@ -31,7 +31,7 @@ ColumnLayout {
     readonly property bool dimmed: messageData?.thinking || messageData?.partType === "reasoning" || messageData?.role === "interface"
     readonly property color accentColor: Appearance.colors.colPrimary
     readonly property color dimColor: Appearance.colors.colSubtext
-    readonly property color bodyColor: dimmed ? dimColor
+    readonly property color bodyColor: messageData?.isError ? Appearance.colors.colError : dimmed ? dimColor
         : Appearance.m3colors.darkmode ? Qt.lighter(Appearance.m3colors.m3onSurface, 1.12) : Appearance.m3colors.m3onSurface
     FontMetrics {
         id: metrics

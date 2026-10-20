@@ -257,7 +257,8 @@ except OSError:
                 ...root.cwdSuggestions.map(path => ({ name: `/cwd ${path}`, displayName: path, description: "directory", run: true }))]
                 .filter(item => item.name.toLowerCase().includes(query.toLowerCase()));
         case "review":
-            return filter(["new"], k => k).map(k => ({ name: `/review ${k}`, displayName: k, description: Translation.tr("Run a fresh review instead of showing pending proposals"), run: true }));
+            return filter([["new", Translation.tr("Run a fresh review instead of showing pending proposals")], ["eval", Translation.tr("Run the smoke eval to measure applied changes (~4 min, GPU)")]], k => k[0])
+                .map(k => ({ name: `/review ${k[0]}`, displayName: k[0], description: k[1], run: true }));
         case "export":
             return filter(Ai.savedChats, chatName)
                 .map(path => ({ name: `/export ${chatName(path)}`, displayName: chatName(path), description: Translation.tr("Overwrite this save"), run: true }));
