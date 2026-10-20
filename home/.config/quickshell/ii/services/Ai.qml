@@ -39,7 +39,7 @@ Singleton {
     property var lastPartMessage: null
     property var todoMessage: null
     property var childToolSeen: ({})
-    readonly property bool busy: root.frontierRunning || requester.running || (root.effectiveMode === "agent" && root.agentBusy)
+    readonly property bool busy: root.frontierRunning || root.reviewRunning || requester.running || (root.effectiveMode === "agent" && root.agentBusy)
     readonly property int chatFontSize: 13
     property string mode: "agent"
     readonly property string effectiveMode: mode === "agent" && opencode.connected ? "agent" : "chat"
@@ -100,6 +100,18 @@ Singleton {
     property var frontierLines: []
     property bool frontierEnded: false
     signal frontierPlanEdit(string plan)
+
+    // Self-review (tools/agent-review): reviewQueue holds proposals not yet shown, reviewCurrent is the docked one.
+    property bool reviewRunning: false
+    property bool reviewEnded: false
+    property bool reviewOk: false
+    property bool reviewDeciding: false
+    property bool reviewStartIfEmpty: false
+    property var reviewRow: null
+    property var reviewLines: []
+    property var reviewQueue: []
+    property var reviewCurrent: null
+    readonly property string reviewPending: reviewCurrent ? reviewCurrent.id : ""
     property QtObject tokenCount: QtObject {
         property int input: -1
         property int output: -1
@@ -139,11 +151,13 @@ Singleton {
         function accept(on: bool): void { root.setAcceptEdits(on); }
         function planFrontier(task: string): void { root.planFrontier(task); }
         function planDecision(choice: string): void { root.planDecision(choice); }
+        function review(arg: string): void { root.review(arg); }
+        function reviewDecision(choice: string): void { root.reviewDecision(choice); }
         function frontierSet(model: string, effort: string): void { root.setFrontierModel(model); root.setFrontierEffort(effort); }
         function state(): string {
             const p = root.activePermission?.requestData;
             return JSON.stringify({
-                mode: root.mode, acceptEdits: root.acceptEdits, permissionMode: root.permissionMode, frontier: { running: root.frontierRunning, pending: root.frontierPending, model: root.frontierModel, effort: root.frontierEffort }, effectiveMode: root.effectiveMode, connected: opencode.connected, busy: root.agentBusy,
+                mode: root.mode, acceptEdits: root.acceptEdits, permissionMode: root.permissionMode, frontier: { running: root.frontierRunning, pending: root.frontierPending, model: root.frontierModel, effort: root.frontierEffort }, reviewPending: root.reviewPending, reviewRunning: root.reviewRunning, effectiveMode: root.effectiveMode, connected: opencode.connected, busy: root.agentBusy,
                 sessionID: root.sessionID, directory: opencode.directory, waitingForUser: root.waitingForUser,
                 activePermission: p ? { id: p.id, permission: p.permission, patterns: p.patterns } : null,
                 tokenTotal: root.tokenCount.total, liveState: root.liveState, turnStartedAt: root.turnStartedAt, liveOutputTokens: root.liveOutputTokens,
@@ -194,6 +208,134 @@ Singleton {
             root.setFrontierRow("completed");
             if (!root.frontierEnded) root.addMessage("⎿ planner exited without a plan", root.interfaceRole);
         }
+    }
+
+    // ---- Self-review ------------------------------------------------------
+    Process {
+        id: reviewProc
+        command: ["python3", "/home/zye/Projects/dev/local-suite/tools/agent-review/review.py"]
+        stdout: SplitParser { onRead: line => root.handleReviewLine(line) }
+        onExited: {
+            root.reviewRunning = false;
+            root.setReviewRow("completed");
+            if (!root.reviewEnded) root.addMessage("⎿ review exited without a result", root.interfaceRole);
+            else if (root.reviewOk) root.reviewList(false);
+        }
+    }
+
+    Process {
+        id: reviewListProc
+        property var result: null
+        command: ["python3", "/home/zye/Projects/dev/local-suite/tools/agent-review/apply.py", "list"]
+        stdout: SplitParser { onRead: line => { try { reviewListProc.result = JSON.parse(line); } catch (e) {} } }
+        onExited: root.handleReviewList(reviewListProc.result)
+    }
+
+    Process {
+        id: reviewApplyProc
+        property string proposalID: ""
+        property string verb: ""
+        property var result: null
+        command: ["python3", "/home/zye/Projects/dev/local-suite/tools/agent-review/apply.py", reviewApplyProc.proposalID, reviewApplyProc.verb]
+        stdout: SplitParser { onRead: line => { try { reviewApplyProc.result = JSON.parse(line); } catch (e) {} } }
+        onExited: root.handleReviewResult(reviewApplyProc.result)
+    }
+
+    function setReviewRow(status) {
+        if (!root.reviewRow) return;
+        root.reviewRow.toolPart = { tool: "review", state: { status: status, title: "sonnet", output: root.reviewLines.join("\n") } };
+        root.reviewRow.done = status !== "running";
+    }
+
+    // /review shows pending proposals; /review new (or nothing pending) runs a fresh review.
+    function review(arg) {
+        if (root.reviewRunning) { root.addMessage("⎿ a review is already running · Esc to stop", root.interfaceRole); return; }
+        if (root.reviewDeciding) return;
+        if (String(arg ?? "").trim() === "new") { root.startReview(); return; }
+        if (root.reviewCurrent) { root.addMessage("⎿ a proposal is awaiting your decision", root.interfaceRole); return; }
+        root.reviewList(true);
+    }
+
+    function reviewList(startIfEmpty) {
+        root.reviewStartIfEmpty = startIfEmpty;
+        reviewListProc.result = null;
+        reviewListProc.running = true;
+    }
+
+    function handleReviewList(list) {
+        if (!Array.isArray(list)) { root.addMessage("⎿ review: could not read proposals", root.interfaceRole); return; }
+        if (list.length === 0) {
+            if (root.reviewStartIfEmpty) root.startReview();
+            else root.addMessage("⎿ no pending proposals", root.interfaceRole);
+            return;
+        }
+        root.addMessage(`⎿ ${list.length} pending proposal${list.length === 1 ? "" : "s"}`, root.interfaceRole);
+        root.reviewQueue = list;
+        root.reviewNext();
+    }
+
+    function reviewNext() {
+        root.reviewCurrent = root.reviewQueue.length > 0 ? root.reviewQueue[0] : null;
+        root.reviewQueue = root.reviewQueue.slice(1);
+    }
+
+    function startReview() {
+        root.reviewQueue = [];
+        root.reviewCurrent = null;
+        root.reviewEnded = false;
+        root.reviewOk = false;
+        root.reviewLines = [];
+        const row = root.aiMessageComponent.createObject(root, { role: "assistant", partType: "tool", content: "", rawContent: "", done: false });
+        const id = root.idForMessage(row);
+        root.messageByID[id] = row;
+        root.messageIDs = [...root.messageIDs, id];
+        root.reviewRow = row;
+        root.setReviewRow("running");
+        root.reviewRunning = true;
+        reviewProc.running = true;
+    }
+
+    function handleReviewLine(line) {
+        let ev;
+        try { ev = JSON.parse(line); } catch (e) { return; }
+        if (ev.type === "tool") {
+            root.reviewLines = [...root.reviewLines, `${ev.name}(${ev.target})`];
+            root.setReviewRow("running");
+        } else if (ev.type === "done") {
+            root.reviewEnded = true;
+            root.reviewOk = true;
+            root.addMessage(`⎿ ${ev.count} proposal${ev.count === 1 ? "" : "s"} · ${Math.round(ev.duration_s)}s · $${ev.cost_usd.toFixed(2)}`, root.interfaceRole);
+        } else if (ev.type === "error") {
+            root.reviewEnded = true;
+            root.addMessage(`⎿ review: ${ev.text}`, root.interfaceRole);
+        }
+    }
+
+    function reviewDecision(choice) {
+        const p = root.reviewCurrent;
+        if (!p || root.reviewDeciding) return;
+        const c = String(choice);
+        if (c === "3" || c === "stop") {
+            const left = root.reviewQueue.length + 1;
+            root.reviewQueue = [];
+            root.reviewCurrent = null;
+            root.addMessage(`⎿ review stopped · ${left} proposal${left === 1 ? "" : "s"} left pending`, root.interfaceRole);
+        } else if (c === "1" || c === "apply" || c === "2" || c === "skip") {
+            root.reviewDeciding = true;
+            reviewApplyProc.result = null;
+            reviewApplyProc.proposalID = p.id;
+            reviewApplyProc.verb = (c === "1" || c === "apply") ? "apply" : "skip";
+            reviewApplyProc.running = true;
+        }
+    }
+
+    function handleReviewResult(res) {
+        const p = root.reviewCurrent;
+        root.reviewDeciding = false;
+        if (!p) return;
+        if (res && res.ok) root.addMessage(`⎿ ${res.status === "applied" ? "applied" : "skipped"}: ${p.title}`, root.interfaceRole);
+        else root.addMessage(`⎿ apply failed: ${res?.error ?? "no result"}`, root.interfaceRole);
+        root.reviewNext();
     }
 
     Process {
@@ -416,7 +558,7 @@ Singleton {
 
     function refreshLive() {
         let state = "idle";
-        if (root.agentBusy || root.frontierRunning) {
+        if (root.agentBusy || root.frontierRunning || root.reviewRunning) {
             const last = root.lastPartMessage;
             if (root.waitingForUser) state = "waiting";
             else if (last && !last.done) state = last.partType === "text" ? "streaming" : last.partType === "reasoning" ? "thinking" : "tool";
@@ -660,6 +802,7 @@ Singleton {
     function compact() { opencode.summarize(root.requestModelName(root.getModel()), (data, ok) => root.addMessage(ok ? "⎿ context compacted" : "⎿ compact failed", root.interfaceRole)); }
     function stop() {
         if (root.frontierRunning) frontierProc.signal(15);
+        else if (root.reviewRunning) reviewProc.signal(15);
         else if (root.effectiveMode === "agent") {
             const wasBusy = root.agentBusy || root.turnStartedAt > 0;
             opencode.abort();
@@ -943,6 +1086,8 @@ Singleton {
         root.userMessageIDs = [];
         root.activePermission = null;
         root.frontierPending = false;
+        root.reviewQueue = [];
+        root.reviewCurrent = null;
         root.waitingForUser = false;
         root.childSessions = ({});
         root.childToolSeen = ({});
@@ -1138,7 +1283,7 @@ PY
                 root.refreshLive();
                 root.lastAgentActivityAt = Date.now();
                 const agent = ({ plan: "plan", accept: "local-accept", bypass: "local-bypass" })[root.permissionMode] ?? "";
-                const stateLine = `Sidebar state now: reasoning effort ${root.effort}, permission mode ${root.permissionMode}. This overrides the model line above.`;
+                const stateLine = `Sidebar state at this message: reasoning effort ${root.effort}, permission mode ${root.permissionMode}. Pedro can change these between messages, so an earlier answer may have been right for its own message. This overrides the model line above.`;
                 opencode.prompt(message, root.requestModelName(root.getModel()), root.pendingFilePath, agent, (data, ok) => {
                     if (!ok) { root.agentBusy = false; root.addMessage("⎿ agent prompt failed", root.interfaceRole); }
                 }, stateLine);

@@ -146,6 +146,8 @@ except OSError:
             execute: args => Ai.setEffort(args[0]) },
         { name: "plan-frontier", description: Translation.tr("Plan with Claude (read-only), then run the plan locally"), takesArgs: true,
             execute: args => Ai.planFrontier(args.join(" ")) },
+        { name: "review", description: Translation.tr("Review recent sessions and propose improvements (Claude)"), takesArgs: true,
+            execute: args => Ai.review(args.join(" ")) },
         { name: "attach", description: Translation.tr("Attach an image (path). Ctrl+V pastes a copied image"), takesArgs: true,
             execute: args => Ai.attachFile(args.join(" ").trim()) },
         { name: "resume", description: Translation.tr("Resume a conversation"), takesArgs: true,
@@ -254,6 +256,8 @@ except OSError:
                 ...(Config.options.ai.recentDirectories ?? []).map(path => ({ name: `/cwd ${path}`, displayName: path, description: "recent", run: true })),
                 ...root.cwdSuggestions.map(path => ({ name: `/cwd ${path}`, displayName: path, description: "directory", run: true }))]
                 .filter(item => item.name.toLowerCase().includes(query.toLowerCase()));
+        case "review":
+            return filter(["new"], k => k).map(k => ({ name: `/review ${k}`, displayName: k, description: Translation.tr("Run a fresh review instead of showing pending proposals"), run: true }));
         case "export":
             return filter(Ai.savedChats, chatName)
                 .map(path => ({ name: `/export ${chatName(path)}`, displayName: chatName(path), description: Translation.tr("Overwrite this save"), run: true }));
@@ -505,6 +509,11 @@ except OSError:
             visible: Ai.frontierPending && Ai.activePermission === null
         }
 
+        ReviewPrompt {
+            id: reviewPopup
+            visible: Ai.reviewPending !== "" && Ai.activePermission === null
+        }
+
         Connections {
             target: Ai
             function onFrontierPlanEdit(plan) {
@@ -623,6 +632,14 @@ except OSError:
                                 if (event.key === Qt.Key_Up) { planPopup.move(-1); event.accepted = true; return; }
                                 if (event.key === Qt.Key_Down) { planPopup.move(1); event.accepted = true; return; }
                                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { planPopup.acceptSelected(); event.accepted = true; return; }
+                            }
+                            if (Ai.reviewPending !== "" && !Ai.activePermission) {
+                                const choice = event.key >= Qt.Key_1 && event.key <= Qt.Key_3 ? reviewPopup.replies[event.key - Qt.Key_1] :
+                                    event.key === Qt.Key_Escape ? "stop" : "";
+                                if (choice) { Ai.reviewDecision(choice); event.accepted = true; return; }
+                                if (event.key === Qt.Key_Up) { reviewPopup.move(-1); event.accepted = true; return; }
+                                if (event.key === Qt.Key_Down) { reviewPopup.move(1); event.accepted = true; return; }
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { reviewPopup.acceptSelected(); event.accepted = true; return; }
                             }
                             if (Ai.activePermission) {
                                 const reply = event.key === Qt.Key_1 ? "once" : event.key === Qt.Key_2 ? "always" :
