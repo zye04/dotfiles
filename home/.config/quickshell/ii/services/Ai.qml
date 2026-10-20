@@ -287,8 +287,9 @@ Singleton {
             root.setEvalRow("running");
         } else if (ev.type === "done") {
             root.evalEnded = true;
-            root.addMessage(`⎿ smoke ${ev.passed}/${ev.total} (last ${ev.prev_passed}/${ev.prev_total}) · ${Math.round(ev.wall_s)}s`, root.interfaceRole);
-            if (ev.regressed.length > 0) root.addMessage(`⎿ regressed: ${ev.regressed.join(", ")}`, root.interfaceRole, true);
+            const last = ev.prev_passed != null && ev.prev_total != null ? `${ev.prev_passed}/${ev.prev_total}` : "–";
+            root.addMessage(`⎿ smoke ${ev.passed}/${ev.total} (last ${last}) · ${Math.round(ev.wall_s)}s`, root.interfaceRole);
+            if ((ev.regressed ?? []).length > 0) root.addMessage(`⎿ regressed: ${ev.regressed.join(", ")}`, root.interfaceRole, true);
         } else if (ev.type === "error") {
             root.evalEnded = true;
             root.addMessage(`⎿ eval: ${ev.text}`, root.interfaceRole);
@@ -342,6 +343,7 @@ Singleton {
     }
 
     function startReview() {
+        if (root.evalRunning) { root.addMessage("⎿ an eval is running · Esc to stop", root.interfaceRole); return; }
         root.reviewQueue = [];
         root.reviewCurrent = null;
         root.reviewEnded = false;

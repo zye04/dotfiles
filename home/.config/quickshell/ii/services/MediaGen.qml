@@ -37,7 +37,9 @@ Singleton {
     property string draftNotice: ""          // set when the agent filled the form (media_fill); cleared on prompt edit or submit
     property string draftAppliedId: ""
     property var pendingDraft: null          // a fresh draft waits here while a job runs or the region editor is open
-    onPromptChanged: draftNotice = ""
+    property bool _applying: false
+    property bool _stateSeen: false
+    onPromptChanged: { draftNotice = ""; if (!_applying && pendingDraft) { draftAppliedId = pendingDraft.id; pendingDraft = null; } }
     onBusyChanged: applyPendingDraft()
     onRegionPathChanged: applyPendingDraft()
 
@@ -140,6 +142,7 @@ Singleton {
     }
     function considerDraft() {
         const d = state.draft;
+        if (!_stateSeen) { _stateSeen = true; draftAppliedId = d?.id ?? ""; return; }
         pendingDraft = d && d.id !== draftAppliedId && Date.now() / 1000 - d.at < 600 ? d : null;
         applyPendingDraft();
     }
@@ -149,7 +152,7 @@ Singleton {
         pendingDraft = null;
         if (Date.now() / 1000 - d.at >= 600) return;
         draftAppliedId = d.id;
-        if (d.prompt != null) prompt = d.prompt;
+        if (d.prompt != null) { _applying = true; prompt = d.prompt; _applying = false; }
         if (d.quality != null && presets?.image?.[d.quality]) quality = d.quality;
         if (d.shape != null) shape = d.shape;
         if (d.model != null && presets?.models?.image?.options?.[d.model]) setModel("image", d.model);
