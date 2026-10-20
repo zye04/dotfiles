@@ -102,7 +102,7 @@ ContentPage {
         ContentSubsection {
             title: Translation.tr("Frontier planner")
             Layout.bottomMargin: 6
-            tooltip: Translation.tr("/plan-frontier asks Claude (through your Claude Code login) for a plan, which the local agent then runs.\n/frontier-model and /frontier-effort change these for the current session")
+            tooltip: Translation.tr("/plan-frontier asks Claude (through your Claude Code login) for a plan, which the local agent then runs.\nThe model and effort are chosen here")
 
             ConfigRow {
                 StyledText {

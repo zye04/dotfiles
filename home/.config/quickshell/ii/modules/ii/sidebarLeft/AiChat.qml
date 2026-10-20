@@ -146,10 +146,6 @@ except OSError:
             execute: args => Ai.setEffort(args[0]) },
         { name: "plan-frontier", description: Translation.tr("Plan with Claude (read-only), then run the plan locally"), takesArgs: true,
             execute: args => Ai.planFrontier(args.join(" ")) },
-        { name: "frontier-model", description: Translation.tr("Claude model for /plan-frontier: opus, sonnet, haiku"), takesArgs: true,
-            execute: args => Ai.setFrontierModel(args[0]) },
-        { name: "frontier-effort", description: Translation.tr("Claude effort for /plan-frontier: low, medium, high, xhigh, max"), takesArgs: true,
-            execute: args => Ai.setFrontierEffort(args[0]) },
         { name: "attach", description: Translation.tr("Attach an image (path). Ctrl+V pastes a copied image"), takesArgs: true,
             execute: args => Ai.attachFile(args.join(" ").trim()) },
         { name: "resume", description: Translation.tr("Resume a conversation"), takesArgs: true,
@@ -167,15 +163,9 @@ except OSError:
         { name: "compact", description: Translation.tr("Summarize the agent context"), takesArgs: false,
             execute: () => Ai.compact() },
         { name: "rewind", description: Translation.tr("Undo to a user message"), takesArgs: true,
-            execute: args => { if (args[0]) Ai.rewind(args[0]); } },
-        { name: "unrevert", description: Translation.tr("Restore the rewound messages"), takesArgs: false,
-            execute: () => Ai.unrevert() },
+            execute: args => { if (args[0] === "restore") Ai.unrevert(); else if (args[0]) Ai.rewind(args[0]); } },
         { name: "stop", description: Translation.tr("Stop the current reply"), takesArgs: false,
             execute: () => Ai.stop() },
-        { name: "plan", description: Translation.tr("Use the read-only plan agent for the next prompt"), takesArgs: false,
-            execute: () => { Ai.planNext = true; Ai.addMessage("⎿ next prompt uses plan", Ai.interfaceRole); } },
-        { name: "accept", description: Translation.tr("Toggle accept-edits mode (Shift+Tab)"), takesArgs: false,
-            execute: () => Ai.setAcceptEdits(!Ai.acceptEdits) },
         { name: "cwd", description: Translation.tr("Working directory for new agent sessions"), takesArgs: true,
             execute: args => {
                 if (args[0] === "here") cwdHere.running = true;
@@ -185,12 +175,8 @@ except OSError:
                 }
                 else Ai.addMessage(`⎿ cwd: ${Ai.agentDirectory}`, Ai.interfaceRole);
             } },
-        { name: "chat", description: Translation.tr("Use direct model chat"), takesArgs: false,
-            execute: () => Ai.setMode("chat") },
-        { name: "agent", description: Translation.tr("Use the local agent"), takesArgs: false,
-            execute: () => Ai.setMode("agent") },
-        { name: "todo", description: Translation.tr("Show the agent todo list"), takesArgs: false,
-            execute: () => Ai.fetchTodos() },
+        { name: "mode", description: Translation.tr("Chat with the model directly or use the agent: /mode chat|agent"), takesArgs: true,
+            execute: args => args[0] ? Ai.setMode(args[0]) : Ai.addMessage(`⎿ mode: ${Ai.mode}`, Ai.interfaceRole) },
         { name: "permissions", description: Translation.tr("Show pending and saved agent permissions"), takesArgs: false,
             execute: () => Ai.showPermissions() },
         { name: "export", description: Translation.tr("Save this conversation under a name"), takesArgs: true,
@@ -210,21 +196,6 @@ except OSError:
             execute: () => Ai.printStatus() },
         { name: "unload", description: Translation.tr("Unload the local model and free VRAM"), takesArgs: false,
             execute: () => Ai.unloadLocalModel() },
-        { name: "prompt", description: Translation.tr("Show or load the system prompt"), takesArgs: true,
-            execute: args => {
-                if (args.length === 0 || args[0] === "get") Ai.printPrompt();
-                else Ai.loadPrompt(args.join(" ").trim());
-            } },
-        { name: "temp", description: Translation.tr("Show or set the temperature"), takesArgs: true,
-            execute: args => {
-                if (args.length == 0 || args[0] == "get") Ai.printTemperature();
-                else Ai.setTemperature(parseFloat(args[0]));
-            } },
-        { name: "key", description: Translation.tr("Set an API key (cloud models only)"), takesArgs: true,
-            execute: args => {
-                if (args[0] == "get") Ai.printApiKey();
-                else Ai.setApiKey(args[0]);
-            } },
     ]
 
     readonly property var effortDescriptions: ({
@@ -254,12 +225,9 @@ except OSError:
         case "effort":
             return filter(Ai.effortLevels, level => level)
                 .map(level => ({ name: `/effort ${level}`, displayName: level + (level === Ai.effort ? " ✓" : ""), description: root.effortDescriptions[level], run: true }));
-        case "frontier-model":
-            return filter(Ai.frontierModels, m => m)
-                .map(m => ({ name: `/frontier-model ${m}`, displayName: m + (m === Ai.frontierModel ? " ✓" : ""), description: "", run: true }));
-        case "frontier-effort":
-            return filter(Ai.frontierEfforts, e => e)
-                .map(e => ({ name: `/frontier-effort ${e}`, displayName: e + (e === Ai.frontierEffort ? " ✓" : ""), description: "", run: true }));
+        case "mode":
+            return filter(["chat", "agent"], m => m)
+                .map(m => ({ name: `/mode ${m}`, displayName: m + (m === Ai.mode ? " ✓" : ""), description: m === "chat" ? Translation.tr("Direct model chat") : Translation.tr("Local agent"), run: true }));
         case "resume":
             if (Ai.effectiveMode === "agent") {
                 if (!root.sessionsLoading && Ai.sessions.length === 0) {
@@ -276,8 +244,9 @@ except OSError:
             return filter(Ai.savedChats, chatName)
                 .map(path => ({ name: `/resume ${chatName(path)}`, displayName: chatName(path), description: path, run: true }));
         case "rewind":
-            return filter(Ai.userMessageIDs, m => m.text)
-                .map(m => ({ name: `/rewind ${m.id}`, displayName: m.text.split("\n")[0], description: m.id, run: true }));
+            return [{ name: "/rewind restore", displayName: Translation.tr("restore last rewind"), description: Translation.tr("Restore the rewound messages"), run: true },
+                ...filter(Ai.userMessageIDs, m => m.text)
+                    .map(m => ({ name: `/rewind ${m.id}`, displayName: m.text.split("\n")[0], description: m.id, run: true }))];
         case "cwd":
             return [{ name: "/cwd here", displayName: "here", description: "focused window's shell", run: true },
                 ...(Config.options.ai.recentDirectories ?? []).map(path => ({ name: `/cwd ${path}`, displayName: path, description: "recent", run: true })),
@@ -939,12 +908,12 @@ except OSError:
             elide: Text.ElideRight
             Layout.preferredHeight: modeHintMetrics.height
             FontMetrics { id: modeHintMetrics; font.family: Appearance.font.family.monospace; font.pixelSize: Ai.chatFontSize }
-            text: Ai.effectiveMode !== "agent" ? "" : Ai.planNext ? "⏸ plan mode on" :
+            text: Ai.effectiveMode !== "agent" ? "" : Ai.permissionMode === "plan" ? "⏸ plan mode on (shift+tab to cycle)" :
                 Ai.permissionMode === "accept" ? "⏵⏵ accept edits on (shift+tab to cycle)" :
                 Ai.permissionMode === "bypass" ? "⏵⏵ bypass permissions on (shift+tab to cycle)" : ""
             font.family: Appearance.font.family.monospace
             font.pixelSize: Ai.chatFontSize
-            color: Ai.planNext ? Appearance.m3colors.m3tertiary : Ai.permissionMode === "bypass" ? Appearance.m3colors.m3error :
+            color: Ai.permissionMode === "plan" ? Appearance.m3colors.m3tertiary : Ai.permissionMode === "bypass" ? Appearance.m3colors.m3error :
                 Ai.permissionMode === "accept" ? Appearance.m3colors.m3primary : Appearance.colors.colSubtext
         }
     }

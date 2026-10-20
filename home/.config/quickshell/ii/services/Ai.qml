@@ -44,8 +44,7 @@ Singleton {
     property string mode: "agent"
     readonly property string effectiveMode: mode === "agent" && opencode.connected ? "agent" : "chat"
     property bool agentBusy: false
-    property bool planNext: false
-    property string permissionMode: "default" // default | accept | bypass; back to default on every new session
+    property string permissionMode: "default" // default | accept | plan | bypass; back to default on every new session
     readonly property bool acceptEdits: permissionMode === "accept"
     property var childSessions: ({})
     property var partMessages: ({})
@@ -301,7 +300,7 @@ Singleton {
     }
 
     function cyclePermissionMode() {
-        root.permissionMode = ({ default: "accept", accept: "bypass", bypass: "default" })[root.permissionMode];
+        root.permissionMode = ({ default: "accept", accept: "plan", plan: "bypass", bypass: "default" })[root.permissionMode];
     }
 
     function setMode(value) {
@@ -672,7 +671,6 @@ Singleton {
             }
         } else requester.running = false;
     }
-    function fetchTodos() { opencode.todos((items, ok) => { if (ok) root.showTodos(items); }); }
     function showPermissions() {
         opencode.pendingPermissions((pending, ok) => {
             if (!ok) { root.addMessage("⎿ could not load permissions", root.interfaceRole); return; }
@@ -817,16 +815,6 @@ Singleton {
             Config.options.ai.systemPrompt = promptLoader.text();
             root.addMessage(Translation.tr("Loaded the following system prompt\n\n---\n\n%1").arg(Config.options.ai.systemPrompt), root.interfaceRole);
         }
-    }
-
-    function printPrompt() {
-        root.addMessage(Translation.tr("The current system prompt is\n\n---\n\n%1").arg(Config.options.ai.systemPrompt), root.interfaceRole);
-    }
-
-    function loadPrompt(filePath) {
-        promptLoader.path = "" // Unload
-        promptLoader.path = filePath; // Load
-        promptLoader.reload();
     }
 
     function addMessage(message, role) {
@@ -982,48 +970,6 @@ Singleton {
 
     function getTemperature() {
         return root.temperature;
-    }
-
-    function setTemperature(value) {
-        if (value == NaN || value < 0 || value > 2) {
-            root.addMessage(Translation.tr("Temperature must be between 0 and 2"), Ai.interfaceRole);
-            return;
-        }
-        Persistent.states.ai.temperature = value;
-        root.temperature = value;
-    }
-
-    function setApiKey(key) {
-        const model = models[currentModelId];
-        if (!model.requires_key) {
-            root.addMessage(Translation.tr("%1 does not require an API key").arg(model.name), Ai.interfaceRole);
-            return;
-        }
-        if (!key || key.length === 0) {
-            const model = models[currentModelId];
-            root.addApiKeyAdvice(model)
-            return;
-        }
-        KeyringStorage.setNestedField(["apiKeys", model.key_id], key.trim());
-        root.addMessage(Translation.tr("API key set for %1").arg(model.name), Ai.interfaceRole);
-    }
-
-    function printApiKey() {
-        const model = models[currentModelId];
-        if (model.requires_key) {
-            const key = root.apiKeys[model.key_id];
-            if (key) {
-                root.addMessage(Translation.tr("API key:\n\n```txt\n%1\n```").arg(key), Ai.interfaceRole);
-            } else {
-                root.addMessage(Translation.tr("No API key set for %1").arg(model.name), Ai.interfaceRole);
-            }
-        } else {
-            root.addMessage(Translation.tr("%1 does not require an API key").arg(model.name), Ai.interfaceRole);
-        }
-    }
-
-    function printTemperature() {
-        root.addMessage(Translation.tr("Temperature: %1").arg(root.temperature), Ai.interfaceRole);
     }
 
     function clearMessages() {
@@ -1232,9 +1178,8 @@ PY
                 }
                 root.refreshLive();
                 root.lastAgentActivityAt = Date.now();
-                const agent = root.planNext ? "plan" : ({ accept: "local-accept", bypass: "local-bypass" })[root.permissionMode] ?? "";
-                const stateLine = `Sidebar state now: reasoning effort ${root.effort}, permission mode ${root.planNext ? "plan" : root.permissionMode}. This overrides the model line above.`;
-                root.planNext = false;
+                const agent = ({ plan: "plan", accept: "local-accept", bypass: "local-bypass" })[root.permissionMode] ?? "";
+                const stateLine = `Sidebar state now: reasoning effort ${root.effort}, permission mode ${root.permissionMode}. This overrides the model line above.`;
                 opencode.prompt(message, root.requestModelName(root.getModel()), root.pendingFilePath, agent, (data, ok) => {
                     if (!ok) { root.agentBusy = false; root.addMessage("⎿ agent prompt failed", root.interfaceRole); }
                 }, stateLine);
