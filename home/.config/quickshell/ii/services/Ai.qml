@@ -692,9 +692,6 @@ Singleton {
         return modelName.replace(/:/g, "_").replace(/ /g, "-").replace(/\//g, "-")
     }
 
-    property list<var> defaultPrompts: []
-    property list<var> userPrompts: []
-    property list<var> promptFiles: [...defaultPrompts, ...userPrompts]
     property list<var> savedChats: []
 
     property var promptSubstitutions: {
@@ -766,34 +763,6 @@ Singleton {
     }
 
     Process {
-        id: getDefaultPrompts
-        running: true
-        command: ["ls", "-1", Directories.defaultAiPrompts]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                if (text.length === 0) return;
-                root.defaultPrompts = text.split("\n")
-                    .filter(fileName => fileName.endsWith(".md") || fileName.endsWith(".txt"))
-                    .map(fileName => `${Directories.defaultAiPrompts}/${fileName}`)
-            }
-        }
-    }
-
-    Process {
-        id: getUserPrompts
-        running: true
-        command: ["ls", "-1", Directories.userAiPrompts]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                if (text.length === 0) return;
-                root.userPrompts = text.split("\n")
-                    .filter(fileName => fileName.endsWith(".md") || fileName.endsWith(".txt"))
-                    .map(fileName => `${Directories.userAiPrompts}/${fileName}`)
-            }
-        }
-    }
-
-    Process {
         id: getSavedChats
         running: true
         command: ["ls", "-1", Directories.aiChats]
@@ -804,16 +773,6 @@ Singleton {
                     .filter(fileName => fileName.endsWith(".json"))
                     .map(fileName => `${Directories.aiChats}/${fileName}`)
             }
-        }
-    }
-
-    FileView {
-        id: promptLoader
-        watchChanges: false;
-        onLoadedChanged: {
-            if (!promptLoader.loaded) return;
-            Config.options.ai.systemPrompt = promptLoader.text();
-            root.addMessage(Translation.tr("Loaded the following system prompt\n\n---\n\n%1").arg(Config.options.ai.systemPrompt), root.interfaceRole);
         }
     }
 
@@ -842,8 +801,8 @@ Singleton {
 
     function addApiKeyAdvice(model) {
         root.addMessage(
-            Translation.tr('To set an API key, pass it with the %4 command\n\nTo view the key, pass "get" with the command<br/>\n\n### For %1:\n\n**Link**: %2\n\n%3')
-                .arg(model.name).arg(model.key_get_link).arg(model.key_get_description ?? Translation.tr("<i>No further instruction provided</i>")).arg("/key"), 
+            Translation.tr('### For %1:\n\n**Link**: %2\n\n%3')
+                .arg(model.name).arg(model.key_get_link).arg(model.key_get_description ?? Translation.tr("<i>No further instruction provided</i>")),
             Ai.interfaceRole
         );
     }

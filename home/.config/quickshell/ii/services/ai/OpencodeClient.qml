@@ -122,7 +122,6 @@ with open(body_path, 'w') as f:
         });
     }
     function messages(callback) { request("GET", sessionPath("/message"), null, callback); }
-    function todos(callback) { request("GET", sessionPath("/todo"), null, callback); }
     function pendingPermissions(callback) { request("GET", "/permission" + directoryQuery(), null, callback); }
     function pendingQuestions(callback) { request("GET", "/question" + directoryQuery(), null, callback); }
     function savedPermissions(callback) { request("GET", "/api/permission/saved", null, callback); }

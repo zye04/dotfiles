@@ -176,7 +176,9 @@ except OSError:
                 else Ai.addMessage(`⎿ cwd: ${Ai.agentDirectory}`, Ai.interfaceRole);
             } },
         { name: "mode", description: Translation.tr("Chat with the model directly or use the agent: /mode chat|agent"), takesArgs: true,
-            execute: args => args[0] ? Ai.setMode(args[0]) : Ai.addMessage(`⎿ mode: ${Ai.mode}`, Ai.interfaceRole) },
+            execute: args => !args[0] ? Ai.addMessage(`⎿ mode: ${Ai.mode}`, Ai.interfaceRole) :
+                (args[0] === "chat" || args[0] === "agent") ? Ai.setMode(args[0]) :
+                Ai.addMessage(Translation.tr("Usage: %1mode chat|agent").arg(root.commandPrefix), Ai.interfaceRole) },
         { name: "permissions", description: Translation.tr("Show pending and saved agent permissions"), takesArgs: false,
             execute: () => Ai.showPermissions() },
         { name: "export", description: Translation.tr("Save this conversation under a name"), takesArgs: true,
@@ -255,9 +257,6 @@ except OSError:
         case "export":
             return filter(Ai.savedChats, chatName)
                 .map(path => ({ name: `/export ${chatName(path)}`, displayName: chatName(path), description: Translation.tr("Overwrite this save"), run: true }));
-        case "prompt":
-            return filter(Ai.promptFiles, path => path)
-                .map(path => ({ name: `/prompt ${path}`, displayName: FileUtils.trimFileExt(FileUtils.fileNameForPath(path)), description: path, run: true }));
         default:
             return [];
         }
