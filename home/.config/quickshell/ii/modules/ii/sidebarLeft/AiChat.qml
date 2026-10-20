@@ -634,12 +634,15 @@ except OSError:
                                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { planPopup.acceptSelected(); event.accepted = true; return; }
                             }
                             if (Ai.reviewPending !== "" && !Ai.activePermission) {
-                                const choice = event.key >= Qt.Key_1 && event.key <= Qt.Key_3 ? reviewPopup.replies[event.key - Qt.Key_1] :
-                                    event.key === Qt.Key_Escape ? "stop" : "";
-                                if (choice) { Ai.reviewDecision(choice); event.accepted = true; return; }
-                                if (event.key === Qt.Key_Up) { reviewPopup.move(-1); event.accepted = true; return; }
-                                if (event.key === Qt.Key_Down) { reviewPopup.move(1); event.accepted = true; return; }
-                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { reviewPopup.acceptSelected(); event.accepted = true; return; }
+                                // only while the input is empty, so typing never answers an unseen proposal
+                                if (event.key === Qt.Key_Escape) { Ai.reviewDecision("stop"); event.accepted = true; return; }
+                                if (messageInputField.text.length === 0) {
+                                    const choice = event.key >= Qt.Key_1 && event.key <= Qt.Key_3 ? reviewPopup.replies[event.key - Qt.Key_1] : "";
+                                    if (choice) { Ai.reviewDecision(choice); event.accepted = true; return; }
+                                    if (event.key === Qt.Key_Up) { reviewPopup.move(-1); event.accepted = true; return; }
+                                    if (event.key === Qt.Key_Down) { reviewPopup.move(1); event.accepted = true; return; }
+                                    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { reviewPopup.acceptSelected(); event.accepted = true; return; }
+                                }
                             }
                             if (Ai.activePermission) {
                                 const reply = event.key === Qt.Key_1 ? "once" : event.key === Qt.Key_2 ? "always" :

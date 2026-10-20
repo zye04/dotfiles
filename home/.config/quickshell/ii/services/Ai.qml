@@ -334,7 +334,7 @@ Singleton {
         root.reviewDeciding = false;
         if (!p) return;
         if (res && res.ok) root.addMessage(`⎿ ${res.status === "applied" ? "applied" : "skipped"}: ${p.title}`, root.interfaceRole);
-        else root.addMessage(`⎿ apply failed: ${res?.error ?? "no result"}`, root.interfaceRole);
+        else { root.addMessage(`⎿ apply failed: ${res?.error ?? "no result"}`, root.interfaceRole); return; }
         root.reviewNext();
     }
 

@@ -6,29 +6,18 @@ import QtQuick.Layouts
 
 Rectangle {
     id: root
-    property int selectedIndex: 0
+    property int selectedIndex: 1
     readonly property var proposal: Ai.reviewCurrent
     readonly property var replies: ["apply", "skip", "stop"]
     readonly property var choices: ["Apply", "Skip", "Stop (keep the rest pending)"]
     Layout.fillWidth: true
     implicitHeight: visible ? body.implicitHeight + 16 : 0
     color: Appearance.colors.colLayer2
-    focus: visible
-    onVisibleChanged: if (visible) { selectedIndex = 0; forceActiveFocus(); }
-    onProposalChanged: selectedIndex = 0
+    onVisibleChanged: if (visible) selectedIndex = 1
+    onProposalChanged: selectedIndex = 1
 
     function move(delta) { selectedIndex = (selectedIndex + delta + 3) % 3; }
     function acceptSelected() { Ai.reviewDecision(replies[selectedIndex]); }
-
-    Keys.onPressed: event => {
-        if (event.key === Qt.Key_Up) move(-1);
-        else if (event.key === Qt.Key_Down) move(1);
-        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) acceptSelected();
-        else if (event.key === Qt.Key_Escape) Ai.reviewDecision("stop");
-        else if (event.key >= Qt.Key_1 && event.key <= Qt.Key_3) Ai.reviewDecision(replies[event.key - Qt.Key_1]);
-        else return;
-        event.accepted = true;
-    }
 
     Rectangle {
         anchors.left: parent.left
@@ -72,16 +61,25 @@ Rectangle {
             font.pixelSize: Ai.chatFontSize
             color: Appearance.colors.colOnLayer1
         }
-        StyledText {
+        StyledFlickable {
+            id: previewFlick
             Layout.fillWidth: true
             Layout.topMargin: 2
             Layout.bottomMargin: 2
-            text: root.proposal?.preview ?? ""
-            wrapMode: Text.Wrap
-            textFormat: Text.PlainText
-            font.family: Appearance.font.family.monospace
-            font.pixelSize: Ai.chatFontSize
-            color: Appearance.colors.colSubtext
+            Layout.preferredHeight: Math.min(previewText.implicitHeight, previewText.font.pixelSize * 1.6 * 12)
+            contentWidth: width
+            contentHeight: previewText.implicitHeight
+            clip: true
+            StyledText {
+                id: previewText
+                width: previewFlick.width
+                text: root.proposal?.preview ?? ""
+                wrapMode: Text.Wrap
+                textFormat: Text.PlainText
+                font.family: Appearance.font.family.monospace
+                font.pixelSize: Ai.chatFontSize
+                color: Appearance.colors.colSubtext
+            }
         }
         Repeater {
             model: root.choices
