@@ -40,6 +40,7 @@ Item {
         if (tool === "write") return `Write(${path})`;
         if (tool === "edit" || tool === "patch") return `Update(${path})`;
         if (tool.startsWith("web_")) return `Web(${input.query ?? input.url ?? ""})`;
+        if (tool.startsWith("media_")) return `Media(${input.prompt ?? tool.slice(6).replace(/_/g, " ")})`;
         return `${tool}(${path || state.title || ""})`;
     }
     readonly property string summary: {
