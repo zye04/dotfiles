@@ -89,6 +89,8 @@ ColumnLayout {
                 Glass { visible: !root.isVideo; glyph: "hd"; label: "Upscale"; onClicked: root.act("upscale") }
                 Glass { visible: !root.isVideo; glyph: "brush"; label: "Region"; onClicked: MediaGen.openRegionEditor(root.item.path, null)
                         StyledToolTip { text: "Change only a painted area" } }
+                Glass { visible: !root.isVideo; glyph: "movie"; label: "Animate"; onClicked: root.act("video")
+                        StyledToolTip { text: "Turn this image into a 5 s video" } }
             }
             Glass { anchors { right: parent.right; bottom: parent.bottom } glyph: "more_horiz"; onClicked: menu.popup() }
             Rectangle {   // video player bar
@@ -136,7 +138,7 @@ ColumnLayout {
                 border.width: 1; border.color: Appearance.colors.colOutlineVariant
             }
             Entry { visible: !root.isVideo; text: "Open in Studio"; onTriggered: Quickshell.execDetached(["xdg-open", MediaGen.base + "/studio/?item=" + encodeURIComponent(root.item.id)]) }
-            Entry { enabled: !MediaGen.busy && !root.isVideo; text: "Reuse prompt and settings"; onTriggered: MediaGen.reuse(root.item) }
+            Entry { enabled: !MediaGen.busy && (!root.isVideo || root.item?.spec?.mode === "i2v"); text: "Reuse prompt and settings"; onTriggered: MediaGen.reuse(root.item) }
             Entry { text: "Copy prompt"; onTriggered: Quickshell.clipboardText = root.item.spec?.prompt ?? "" }
             Entry { text: "Show in folder"; onTriggered: Quickshell.execDetached(["dolphin", "--select", root.item.path]) }
             MenuSeparator {

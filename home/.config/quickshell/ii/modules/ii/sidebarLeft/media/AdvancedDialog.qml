@@ -92,7 +92,7 @@ WindowDialog {
                 readonly property var keys: Object.keys(info.options)
                 readonly property string curLabel: info.options[MediaGen.modelKey(modelData)]?.label ?? MediaGen.modelKey(modelData)
                 Layout.fillWidth: true; spacing: 6
-                StyledText { text: ({ image: "Image generator", upscaler: "Upscaler" })[mr.modelData] ?? mr.modelData
+                StyledText { text: ({ image: "Image generator", video: "Video generator", upscaler: "Upscaler" })[mr.modelData] ?? mr.modelData
                              font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colSubtext }
                 HelpIcon { tip: mr.info.options[MediaGen.modelKey(mr.modelData)]?.help ?? "" }
                 Rectangle { width: 6; height: 6; radius: Appearance.rounding.full; color: Appearance.colors.colPrimary; visible: MediaGen.adv.models?.[mr.modelData] !== undefined }

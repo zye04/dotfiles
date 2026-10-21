@@ -43,21 +43,25 @@ Singleton {
     onBusyChanged: applyPendingDraft()
     onRegionPathChanged: applyPendingDraft()
 
-    function mode() { return srcPath === "" ? "t2i" : (task === "upscale" ? "upscale" : "edit"); }
+    function mode() { return srcPath === "" ? "t2i" : ({ upscale: "upscale", video: "i2v" })[task] ?? "edit"; }
+    function curMode() { return regionEditor ? "region" : mode(); }
+    function role(m) { return m === "i2v" ? "video" : "image"; }
     function presetValue(key) {
         if (!presets) return null;
+        if (mode() === "i2v") return key === "steps" ? presets.video[quality].steps : presets.video[quality].cfg_hi;
         return key === "steps" ? presets.image[quality].steps : presets.image.cfg;
     }
     function itemForPath(path) { return items.find(i => i.path === path) ?? null; }
     function qualityHint(q) {
         const e = presets?.estimates_s;
-        return e ? "~" + e.image[q] + " s" : "";
+        if (!e) return "";
+        return mode() === "i2v" ? fmtDuration(e.video[q]) : "~" + e.image[q] + " s";
     }
     function selectedItem() { return items.find(i => i.id === selectedId) ?? (items.length ? items[0] : null); }
     function estimateS() {
         if (!presets) return 0;
         const e = presets.estimates_s, m = mode();
-        return m === "t2i" ? e.image[quality] : e.image[m];
+        return m === "i2v" ? e.video[quality] : m === "t2i" ? e.image[quality] : e.image[m];
     }
     function fmtDuration(s) {
         if (s < 60) return "~" + Math.max(1, Math.round(s)) + " s";
@@ -84,7 +88,8 @@ Singleton {
     }
     function modelRoles() {
         if (!presets?.models) return [];
-        return regionPath === "" && mode() === "upscale" ? ["upscaler"] : ["image"];
+        if (regionPath !== "") return ["image"];
+        return mode() === "upscale" ? ["upscaler"] : [role(mode())];
     }
     function modelKey(role) { return adv.models?.[role] ?? presets?.models?.[role]?.default ?? ""; }
     function setModel(role, key) {
@@ -98,14 +103,16 @@ Singleton {
         return out;
     }
     function loraMeta(key) {
-        return presets?.models?.image?.options?.[modelKey("image")]?.loras?.[key];
+        const r = role(curMode());
+        return presets?.models?.[r]?.options?.[modelKey(r)]?.loras?.[key];
     }
-    function loraKeys(m = regionEditor ? "region" : mode()) {
-        if (!["t2i", "edit", "region"].includes(m)) return [];
-        const meta = presets?.models?.image?.options?.[modelKey("image")]?.loras ?? {};
+    function loraKeys(m = curMode()) {
+        if (!["t2i", "edit", "region", "i2v"].includes(m)) return [];
+        const meta = presets?.models?.[role(m)]?.options?.[modelKey(role(m))]?.loras ?? {};
         return Object.keys(meta).filter(k => !meta[k].modes || meta[k].modes.includes(m));
     }
-    function loraDefault(key) { return loraMeta(key)?.default_strength; }
+    // Video: the quality preset sets the speed LoRA's strength, over the LoRA's own default.
+    function loraDefault(key) { return (curMode() === "i2v" ? presets?.video?.[quality]?.loras?.[key] : undefined) ?? loraMeta(key)?.default_strength; }
     function loraValue(key) { return adv.loras?.[key] ?? loraDefault(key) ?? 1; }
     function setLora(key, v) {
         const o = Object.assign({}, adv.loras ?? {}), r = Math.round(v * 20) / 20;
@@ -137,7 +144,7 @@ Singleton {
         if (sp.source) setSource(sp.source); else clearSource();
         refs = (sp.refs ?? []).slice();
         if (sp.mode === "region") { openRegionEditor(sp.source, sp.regions); return; }
-        task = sp.mode === "upscale" ? "upscale" : "edit";
+        task = sp.mode === "upscale" ? "upscale" : sp.mode === "i2v" ? "video" : "edit";
         if (sp.scale) scale = sp.scale;
     }
     function considerDraft() {
@@ -155,11 +162,12 @@ Singleton {
         if (d.prompt) { _applying = true; prompt = d.prompt; _applying = false; }
         if (d.quality != null && presets?.image?.[d.quality]) quality = d.quality;
         if (d.shape != null) shape = d.shape;
-        if (d.model != null && presets?.models?.image?.options?.[d.model]) setModel("image", d.model);
+        if (d.model != null && presets?.models?.[role(d.mode)]?.options?.[d.model]) setModel(role(d.mode), d.model);
         for (const [k, v] of Object.entries(d.loras ?? {})) setLora(k, v);
         if (d.seed != null) adv = Object.assign({}, adv, { seed: d.seed });
         if (d.mode === "t2i") { if (d.source == null) clearSource(); }
         else if (d.mode === "edit" || d.mode === "upscale") { if (d.source != null) setSource(d.source); task = d.mode; }
+        else if (d.mode === "i2v") { if (d.source != null) setSource(d.source); task = "video"; }
         draftNotice = "Filled by the agent · " + Qt.formatTime(new Date(d.at * 1000), "HH:mm");
     }
     function thumbUrl(id) { return base + "/thumb/" + id; }

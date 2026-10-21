@@ -42,9 +42,9 @@ Item {
                     Seg {
                         visible: MediaGen.srcPath !== ""
                         Layout.fillWidth: true
-                        model: [{ "icon": "edit", "name": "Edit" }, { "icon": "hd", "name": "Upscale" }, { "icon": "brush", "name": "Region" }]
-                        currentIndex: MediaGen.task === "upscale" ? 1 : 0
-                        onPicked: (i) => { if (i === 2) MediaGen.openRegionEditor(MediaGen.srcPath, null); else MediaGen.task = i === 1 ? "upscale" : "edit"; }
+                        model: [{ "icon": "edit", "name": "Edit" }, { "icon": "hd", "name": "Upscale" }, { "icon": "brush", "name": "Region" }, { "icon": "movie", "name": "Video" }]
+                        currentIndex: ({ upscale: 1, video: 3 })[MediaGen.task] ?? 0
+                        onPicked: (i) => { if (i === 2) MediaGen.openRegionEditor(MediaGen.srcPath, null); else MediaGen.task = ["edit", "upscale", "", "video"][i]; }
                     }
                     PromptField { Layout.fillWidth: true; Layout.minimumWidth: 0 }
                     OptionPills { Layout.fillWidth: true; Layout.minimumWidth: 0 }
