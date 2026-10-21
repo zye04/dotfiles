@@ -174,6 +174,7 @@ Singleton {
         if (d.mode === "t2i") { if (d.source == null) clearSource(); }
         else if (d.mode === "edit" || d.mode === "upscale") { if (d.source != null) setSource(d.source); task = d.mode; }
         else if (d.mode === "i2v") { if (d.source != null) setSource(d.source); task = "video"; }
+        else if (d.mode === "interp") { if (d.source != null) setSource(d.source); if (d.factor != null) factor = d.factor; }
         draftNotice = "Filled by the agent · " + Qt.formatTime(new Date(d.at * 1000), "HH:mm");
     }
     function thumbUrl(id) { return base + "/thumb/" + id; }

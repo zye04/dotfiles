@@ -929,6 +929,7 @@ Singleton {
     // - api_format: The API format of the model. Only "openai" is supported here.
     // - extraParams: Extra parameters to be passed to the model. This is a JSON object.
     // - efforts: Map of effort level -> model name to request, e.g. {"low": "qwen:think"}.
+    // - agent: opencode agent to use in agent mode (with -plan/-accept/-bypass variants); default agent if unset.
     // All models come from `ai.extraModels` in config.json (see addUserModels).
     property var models: ({})
     property var modelList: Object.keys(root.models)
@@ -1351,7 +1352,10 @@ PY
                 }
                 root.refreshLive();
                 root.lastAgentActivityAt = Date.now();
-                const agent = ({ plan: "plan", accept: "local-accept", bypass: "local-bypass" })[root.permissionMode] ?? "";
+                // A model with its own opencode agent (e.g. "media") uses that agent's permission variants.
+                const own = root.getModel()?.agent ?? "";
+                const suffix = ({ plan: "-plan", accept: "-accept", bypass: "-bypass" })[root.permissionMode] ?? "";
+                const agent = own ? own + suffix : ({ plan: "plan", accept: "local-accept", bypass: "local-bypass" })[root.permissionMode] ?? "";
                 const stateLine = `Sidebar state at this message: reasoning effort ${root.effort}, permission mode ${root.permissionMode}, local time ${Qt.formatDateTime(new Date(), "ddd d MMM yyyy HH:mm")}. Pedro can change these between messages, so an earlier answer may have been right for its own message. This overrides the model line above.`;
                 opencode.prompt(message, root.requestModelName(root.getModel()), root.pendingFilePath, agent, (data, ok) => {
                     if (!ok) { root.agentBusy = false; root.addMessage("⎿ agent prompt failed", root.interfaceRole); }

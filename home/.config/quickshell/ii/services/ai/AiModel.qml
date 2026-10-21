@@ -15,6 +15,7 @@ import QtQuick;
  * - extraParams: Extra parameters to be passed to the model. This is a JSON object.
  * - efforts: Map of effort level -> model name to request (e.g. {"low": "qwen:low"}).
  * - context_size: Context window in tokens, shown in /status.
+ * - agent: opencode agent for agent mode (e.g. "media"); empty means the default agent.
  */
 
 QtObject {
@@ -33,4 +34,5 @@ QtObject {
     property var extraParams: ({})
     property var efforts: ({})
     property int context_size: 0
+    property string agent
 }
