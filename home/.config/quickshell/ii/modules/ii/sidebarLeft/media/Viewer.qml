@@ -91,6 +91,8 @@ ColumnLayout {
                         StyledToolTip { text: "Change only a painted area" } }
                 Glass { visible: !root.isVideo; glyph: "movie"; label: "Animate"; onClicked: root.act("video")
                         StyledToolTip { text: "Turn this image into a 5 s video" } }
+                Glass { visible: root.isVideo; glyph: "slow_motion_video"; label: "Interpolate"; onClicked: root.act("interp")
+                        StyledToolTip { text: "Smoother motion: adds frames between frames (FILM)" } }
             }
             Glass { anchors { right: parent.right; bottom: parent.bottom } glyph: "more_horiz"; onClicked: menu.popup() }
             Rectangle {   // video player bar

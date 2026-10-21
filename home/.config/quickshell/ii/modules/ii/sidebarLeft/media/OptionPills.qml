@@ -8,13 +8,16 @@ Flow {
     readonly property string m: MediaGen.mode()
     readonly property bool showShape: m === "t2i"
     readonly property bool showScale: m === "upscale"
-    readonly property bool showQuality: m !== "upscale"
-    visible: showShape || showScale || showQuality
+    readonly property bool showQuality: m !== "upscale" && m !== "interp"
+    readonly property bool showFactor: m === "interp"
+    visible: showShape || showScale || showQuality || showFactor
     spacing: 6
     MediaChoice { visible: root.showShape; label: "Shape"; selectedValue: MediaGen.shape
         options: C.SHAPES.map(s => [s[0], s[0], s[1]]); onPicked: v => MediaGen.shape = v }
     MediaChoice { visible: root.showScale; label: "Scale"; selectedValue: MediaGen.scale
         options: [[1.5, "1.5×", ""], [2.0, "2×", ""]]; onPicked: v => MediaGen.scale = v }
+    MediaChoice { visible: root.showFactor; label: "Frames"; selectedValue: MediaGen.factor
+        options: [2, 3].map(f => [f, f + "×", MediaGen.interpHint(f)]); onPicked: v => MediaGen.factor = v }
     MediaChoice { visible: root.showQuality; label: "Quality"; selectedValue: MediaGen.quality
         options: ["draft", "balanced", "realistic"].map(q => [q, q.charAt(0).toUpperCase() + q.slice(1), MediaGen.qualityHint(q)])
         onPicked: v => MediaGen.quality = v }

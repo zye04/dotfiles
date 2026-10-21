@@ -27,6 +27,7 @@ Singleton {
     property string shape: "16:9"
     property string quality: "realistic"
     property real scale: 2.0
+    property int factor: 2
     property var adv: ({ steps: null, cfg: null, seed: null, models: ({}), loras: ({}) })
     property string selectedId: ""
     property string regionPath: ""
@@ -43,7 +44,8 @@ Singleton {
     onBusyChanged: applyPendingDraft()
     onRegionPathChanged: applyPendingDraft()
 
-    function mode() { return srcPath === "" ? "t2i" : ({ upscale: "upscale", video: "i2v" })[task] ?? "edit"; }
+    function srcIsVideo() { return /\.mp4$/i.test(srcPath); }
+    function mode() { return srcPath === "" ? "t2i" : srcIsVideo() ? "interp" : ({ upscale: "upscale", video: "i2v" })[task] ?? "edit"; }
     function curMode() { return regionEditor ? "region" : mode(); }
     function role(m) { return m === "i2v" ? "video" : "image"; }
     function presetValue(key) {
@@ -52,6 +54,8 @@ Singleton {
         return key === "steps" ? presets.image[quality].steps : presets.image.cfg;
     }
     function itemForPath(path) { return items.find(i => i.path === path) ?? null; }
+    // Only a generated Wan clip has a known frame rate.
+    function interpHint(f) { return itemForPath(srcPath)?.spec?.mode === "i2v" && presets?.video ? presets.video.fps * f + " fps" : ""; }
     function qualityHint(q) {
         const e = presets?.estimates_s;
         if (!e) return "";
@@ -61,6 +65,7 @@ Singleton {
     function estimateS() {
         if (!presets) return 0;
         const e = presets.estimates_s, m = mode();
+        if (m === "interp") return e.interp?.[factor] ?? 0;
         return m === "i2v" ? e.video[quality] : m === "t2i" ? e.image[quality] : e.image[m];
     }
     function fmtDuration(s) {
@@ -70,7 +75,7 @@ Singleton {
     }
     function canSubmit() {
         if (busy || !connected || Ai.busy) return false;
-        return mode() === "upscale" || prompt.trim().length > 0;
+        return mode() === "upscale" || mode() === "interp" || prompt.trim().length > 0;
     }
     function buildSpec() {
         const m = mode();
@@ -84,12 +89,13 @@ Singleton {
         if (srcPath !== "") s.source = srcPath;
         if (m === "edit" && refs.length) s.refs = refs;
         if (m === "upscale") s.scale = scale;
+        if (m === "interp") s.factor = factor;
         return s;
     }
     function modelRoles() {
         if (!presets?.models) return [];
         if (regionPath !== "") return ["image"];
-        return mode() === "upscale" ? ["upscaler"] : [role(mode())];
+        return mode() === "upscale" ? ["upscaler"] : mode() === "interp" ? [] : [role(mode())];
     }
     function modelKey(role) { return adv.models?.[role] ?? presets?.models?.[role]?.default ?? ""; }
     function setModel(role, key) {

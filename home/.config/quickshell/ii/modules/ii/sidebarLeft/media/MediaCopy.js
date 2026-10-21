@@ -5,8 +5,8 @@ const COPY = {
     edit: ["What should change?", "Describe the change. Ask to keep the rest the same.", "Make her coat dark green and add light rain", ["keep the face", "same lighting"]],
     i2v: ["Describe the motion", "What moves and how: action, pace, camera. The image already sets the look.", "She turns toward the camera and smiles, hair moving in the wind, slow push in", ["static camera", "slow push in", "natural movement", "slow motion"]]
 };
-const ROLE = { edit: "Will be edited", upscale: "Will be upscaled", i2v: "Will be animated" };
-const BUTTON = { t2i: ["auto_awesome", "Create image"], edit: ["edit", "Edit image"], upscale: ["hd", "Upscale image"], region: ["brush", "Apply region edit"], i2v: ["movie", "Animate image"] };
+const ROLE = { edit: "Will be edited", upscale: "Will be upscaled", i2v: "Will be animated", interp: "Will be smoothed" };
+const BUTTON = { t2i: ["auto_awesome", "Create image"], edit: ["edit", "Edit image"], upscale: ["hd", "Upscale image"], region: ["brush", "Apply region edit"], i2v: ["movie", "Animate image"], interp: ["slow_motion_video", "Interpolate video"] };
 const SHAPES = [["16:9", "landscape"], ["9:16", "portrait"], ["1:1", "square"], ["4:5", "portrait"]];
 
 function appendSuggestion(text, word) {

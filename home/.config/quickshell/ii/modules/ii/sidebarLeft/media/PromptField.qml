@@ -9,7 +9,7 @@ ColumnLayout {
     id: root
     readonly property string m: MediaGen.mode()
     readonly property var copy: C.COPY[m] ?? C.COPY.t2i
-    visible: m !== "upscale"
+    visible: m !== "upscale" && m !== "interp"
     spacing: 6
 
     StyledText { text: root.copy[0]; color: Appearance.colors.colOnLayer1; font.pixelSize: Appearance.font.pixelSize.smallie; font.weight: Font.Medium; Layout.leftMargin: 2 }

@@ -56,12 +56,13 @@ Item {
                 visible: !MediaGen.refs.length
                 Layout.preferredWidth: 58; Layout.preferredHeight: 38; radius: Appearance.rounding.verysmall; clip: true; color: Appearance.colors.colLayer1
                 Image { anchors.fill: parent; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 116
-                        source: MediaGen.srcPath !== "" ? "file://" + MediaGen.srcPath : "" }
+                        source: MediaGen.srcPath === "" ? "" : !MediaGen.srcIsVideo() ? "file://" + MediaGen.srcPath
+                            : MediaGen.itemForPath(MediaGen.srcPath) ? MediaGen.thumbUrl(MediaGen.itemForPath(MediaGen.srcPath).id) : "" }
             }
             ColumnLayout {
                 visible: !MediaGen.refs.length
                 Layout.fillWidth: true; spacing: 0
-                StyledText { Layout.fillWidth: true; elide: Text.ElideMiddle; text: "Photo 1 · " + MediaGen.srcPath.split("/").pop(); font.pixelSize: Appearance.font.pixelSize.smallie }
+                StyledText { Layout.fillWidth: true; elide: Text.ElideMiddle; text: (MediaGen.srcIsVideo() ? "Video · " : "Photo 1 · ") + MediaGen.srcPath.split("/").pop(); font.pixelSize: Appearance.font.pixelSize.smallie }
                 StyledText { text: C.ROLE[MediaGen.mode()] ?? ""; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
             }
             // Numbered slots, so prompts can say "photo 2" and mean exactly this image.
