@@ -764,6 +764,9 @@ Singleton {
                 }
             }
             for (const id of root.messageIDs) root.messageByID[id].queued = false;
+            // TabbyAPI ends a thinking loop with a plain "stop", so the turn would end with no reply at all.
+            if (root.turnStartedAt > 0 && !root.turnInterrupted && root.lastPartMessage?.partType === "reasoning")
+                root.addMessage("⎿ no reply: the model stopped while thinking · try /retry", root.interfaceRole);
             if (root.turnStartedAt > 0 && !root.turnInterrupted) {
                 const now = Date.now();
                 root.appendMarker("turnend", { durationMs: now - root.turnStartedAt, outputTokens: root.liveOutputTokens, doneAt: now });
