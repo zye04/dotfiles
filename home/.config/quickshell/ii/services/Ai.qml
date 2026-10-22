@@ -955,6 +955,10 @@ Singleton {
             root.addUserModels()
         }
     }
+    Connections {   // config.json edited while running: pick up renamed or new models without a restart
+        target: Config.options.ai
+        function onExtraModelsChanged() { if (Config.ready) root.addUserModels() }
+    }
 
     property string requestScriptFilePath: "/tmp/quickshell/ai/request.sh"
     // The request body goes in a file: a long chat would exceed the per-argument

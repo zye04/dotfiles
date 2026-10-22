@@ -26,6 +26,9 @@ Item {
     ]
     property int tabCount: swipeView.count
     readonly property bool mediaActive: root.aiChatEnabled && swipeView.currentIndex === 1
+    // Sarah's stage opens next to the chat while she is the model and has something on it.
+    readonly property bool stageActive: root.aiChatEnabled && swipeView.currentIndex === 0 && Ai.getModel()?.agent === "sarah"
+        && !!MediaGen.stage && MediaGen.stage.id !== MediaGen.stageHiddenId
     onMediaActiveChanged: if (mediaActive) MediaGen.refreshItems()
     Binding { target: MediaGen; property: "tabVisible"; value: root.mediaActive && GlobalStates.sidebarLeftOpen }
 
@@ -102,7 +105,23 @@ Item {
 
         Component {
             id: aiChat
-            AiChat {}
+            Item {
+                RowLayout {
+                    anchors.fill: parent
+                    spacing: 10
+                    AiChat {
+                        Layout.fillHeight: true
+                        Layout.fillWidth: !root.stageActive
+                        Layout.preferredWidth: root.stageActive ? Appearance.sizes.sidebarWidth - 24 : -1
+                    }
+                    Loader {
+                        active: root.stageActive
+                        visible: active
+                        Layout.fillWidth: true; Layout.fillHeight: true
+                        sourceComponent: SarahStage {}
+                    }
+                }
+            }
         }
         Component {
             id: mediaStudio

@@ -478,7 +478,7 @@ except OSError:
                 shown: Ai.messageIDs.length === 0
                 icon: "neurology"
                 title: Ai.getModel()?.name ?? Translation.tr("No model")
-                description: Translation.tr("Type / for commands\nCtrl+O expand · Ctrl+P pin · Ctrl+D detach")
+                description: Translation.tr("Type / for commands\nCtrl+O collapse · Ctrl+P pin · Ctrl+D detach")
                 descriptionHorizontalAlignment: Text.AlignHCenter
                 shape: MaterialShape.Shape.PixelCircle
             }

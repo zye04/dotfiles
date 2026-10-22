@@ -88,8 +88,8 @@ Scope { // Scope
             id: panelWindow
             visible: GlobalStates.sidebarLeftOpen
             
-            property bool extend: false
-            property real sidebarWidth: root.sidebarContent?.mediaActive ? Appearance.sizes.sidebarWidthMedia : (panelWindow.extend ? Appearance.sizes.sidebarWidthExtended : Appearance.sizes.sidebarWidth)
+            property bool extend: true   // opens expanded; Ctrl+O collapses until the next open
+            property real sidebarWidth: root.sidebarContent?.mediaActive || root.sidebarContent?.stageActive ? Appearance.sizes.sidebarWidthMedia : (panelWindow.extend ? Appearance.sizes.sidebarWidthExtended : Appearance.sizes.sidebarWidth)
             property var contentParent: sidebarLeftBackground
 
             function hide() {
@@ -116,6 +116,7 @@ Scope { // Scope
 
             onVisibleChanged: {
                 if (visible) {
+                    extend = true;
                     GlobalFocusGrab.addDismissable(panelWindow);
                 } else {
                     GlobalFocusGrab.removeDismissable(panelWindow);

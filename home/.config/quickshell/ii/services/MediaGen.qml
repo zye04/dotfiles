@@ -12,6 +12,8 @@ Singleton {
 
     // server state
     property var state: ({ status: "idle", stages: [] })
+    readonly property var stage: state.stage ?? null      // Sarah's stage scene (sarah_stage_show)
+    property string stageHiddenId: ""                      // hidden by Pedro until a new scene arrives
     readonly property bool busy: state.status === "running" || state.status === "starting"
     property bool connected: false
     property var items: []
