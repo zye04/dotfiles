@@ -59,7 +59,7 @@ Rectangle {
                         Layout.fillWidth: true; Layout.fillHeight: true
                         opacity: 0
                         Component.onCompleted: opacity = 1
-                        Behavior on opacity { NumberAnimation { duration: 450; easing.type: Easing.OutCubic } }
+                        Behavior on opacity { animation: Appearance.animation.elementMove.numberAnimation.createObject(this) }
                         Image {
                             id: pic
                             anchors.fill: parent; visible: cell.modelData.kind === "image"

@@ -11,6 +11,12 @@ ColumnLayout {
     readonly property string status: MediaGen.state.status ?? "idle"
     readonly property bool errorShown: status === "error" && (MediaGen.state.job?.id ?? "recovered") !== MediaGen.dismissedJobId
     readonly property var btn: C.buttonFor(MediaGen.mode(), MediaGen.srcIsVideo())
+    readonly property bool running: status === "running" || status === "starting"
+    // Elapsed ticks locally from the job's start: the service only sends state on progress, which can pause for a minute.
+    property real now: Date.now() / 1000
+    readonly property real elapsed: Math.max(0, now - (MediaGen.state.job?.started_at ?? now))
+    readonly property real remaining: (MediaGen.state.eta_s ?? 0) - elapsed
+    Timer { running: root.running; repeat: true; interval: 1000; triggeredOnStart: true; onTriggered: root.now = Date.now() / 1000 }
     spacing: 8
 
     RowLayout {   // swap note
@@ -34,7 +40,6 @@ ColumnLayout {
         visible: root.status === "idle" || root.status === "error" && !root.errorShown
         Layout.fillWidth: true; implicitHeight: 46
         enabled: MediaGen.canSubmit()
-        opacity: 1
         buttonColor: enabled ? (down ? Appearance.colors.colPrimaryContainerActive : hovered ? colBackgroundHover : colBackground) : Appearance.colors.colLayer2Disabled
         readonly property color foreground: enabled ? Appearance.colors.colOnPrimaryContainer : Appearance.colors.colOnLayer2Disabled
         buttonRadius: Appearance.rounding.normal
@@ -42,13 +47,14 @@ ColumnLayout {
         colBackgroundHover: Appearance.colors.colPrimaryContainerHover
         colRipple: Appearance.colors.colPrimaryContainerActive
         onClicked: MediaGen.submit()
-        StyledToolTip { text: Ai.busy ? "The agent is replying…" : "Ctrl + Enter" }
+        StyledToolTip { text: !MediaGen.connected ? "The media service is offline" : Ai.busy ? "The agent is replying…"
+                                  : !submitButton.enabled ? "Describe it first" : "Ctrl + Enter" }
         contentItem: RowLayout {
             anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
             MaterialSymbol { text: root.btn[0]; fill: 1; color: submitButton.foreground }
             StyledText { text: root.btn[1]; font.pixelSize: Appearance.font.pixelSize.smallie; font.weight: Font.Medium; color: submitButton.foreground }
             Item { Layout.fillWidth: true }
-            StyledText { text: MediaGen.fmtDuration(MediaGen.estimateS()); font.pixelSize: Appearance.font.pixelSize.smaller; color: ColorUtils.mix(submitButton.foreground, submitButton.buttonColor, 0.65) }
+            StyledText { visible: MediaGen.estimateS() > 0; text: MediaGen.fmtDuration(MediaGen.estimateS()); font.pixelSize: Appearance.font.pixelSize.smaller; color: ColorUtils.mix(submitButton.foreground, submitButton.buttonColor, 0.65) }
         }
     }
 
@@ -61,20 +67,24 @@ ColumnLayout {
     }
 
     Rectangle {   // run card
-        visible: root.status === "running" || root.status === "starting"
+        visible: root.running
         Layout.fillWidth: true; implicitHeight: run.implicitHeight + 24
         radius: Appearance.rounding.normal; color: Appearance.colors.colLayer1
         ColumnLayout {
             id: run; anchors { fill: parent; margins: 12; leftMargin: 14; rightMargin: 14 } spacing: 9
             RowLayout {
                 StyledText { Layout.fillWidth: true; Layout.minimumWidth: 0; elide: Text.ElideRight; text: MediaGen.state.title ?? ""; font.weight: Font.Medium; font.pixelSize: Appearance.font.pixelSize.smallie }
-                Item { Layout.fillWidth: true }
                 StyledText {
                     color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller
-                    text: root.status === "starting" ? "Starting the generator…" : C.mmss(MediaGen.state.elapsed_s) + " · " + MediaGen.fmtDuration(Math.max(0, (MediaGen.state.eta_s ?? 0) - (MediaGen.state.elapsed_s ?? 0))) + " left"
+                    text: C.mmss(root.elapsed) + " · " + (root.remaining > 0 ? MediaGen.fmtDuration(root.remaining) + " left" : "taking longer than estimated")
                 }
             }
             StyledProgressBar { Layout.fillWidth: true; value: MediaGen.state.progress ?? 0 }
+            StyledText {   // live detail: pass, step, part, frame
+                visible: text !== ""
+                Layout.fillWidth: true; Layout.minimumWidth: 0; elide: Text.ElideRight
+                text: MediaGen.state.detail ?? ""; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller
+            }
             Repeater {
                 model: MediaGen.state.stages ?? []
                 delegate: RowLayout {
@@ -87,11 +97,11 @@ ColumnLayout {
                     }
                     MaterialLoadingIndicator { visible: modelData.state === "now"; loading: visible; implicitSize: Appearance.font.pixelSize.larger }
                     StyledText { Layout.fillWidth: true; Layout.minimumWidth: 0; wrapMode: Text.Wrap; text: modelData.label; font.pixelSize: Appearance.font.pixelSize.smaller
-                                 color: modelData.state === "now" ? Appearance.colors.colOnLayer1 : modelData.state === "done" ? Appearance.colors.colOnLayer1 : Appearance.colors.colSubtext }
+                                 color: modelData.state === "next" ? Appearance.colors.colSubtext : Appearance.colors.colOnLayer1 }
                 }
             }
             RowLayout {
-                StyledText { text: "Esc stops · finished parts are kept"; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
+                StyledText { text: "Esc stops" + (MediaGen.state.job?.spec?.mode === "region" ? " · finished areas are kept" : ""); color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
                 Item { Layout.fillWidth: true }
                 RippleButtonWithIcon { materialIcon: "stop"; mainText: "Stop"; onClicked: MediaGen.stop() }
             }

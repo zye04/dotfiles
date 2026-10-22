@@ -9,7 +9,9 @@ import "MediaCopy.js" as C
 // Empty: one quiet row. Filled: thumbnail card with its role. Accepts drops, Ctrl+V (handled by MediaStudio) and click → picker.
 Item {
     id: root
-    implicitHeight: MediaGen.srcPath === "" ? 40 : MediaGen.refs.length ? 70 : 56
+    // Reference photos only take part in edits; other tasks show the single source.
+    readonly property bool showRefs: MediaGen.refs.length > 0 && MediaGen.mode() === "edit"
+    implicitHeight: MediaGen.srcPath === "" ? 40 : showRefs ? 70 : 56
     Behavior on implicitHeight { animation: Appearance.animation.elementMove.numberAnimation.createObject(this) }
 
     DropArea {
@@ -53,28 +55,28 @@ Item {
             anchors { fill: parent; margins: 8 }
             spacing: 10
             Rectangle {
-                visible: !MediaGen.refs.length
+                visible: !root.showRefs
                 Layout.preferredWidth: 58; Layout.preferredHeight: 38; radius: Appearance.rounding.verysmall; clip: true; color: Appearance.colors.colLayer1
-                Image { anchors.fill: parent; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 116
+                Image { anchors.fill: parent; fillMode: Image.PreserveAspectCrop; asynchronous: true; autoTransform: true; sourceSize.width: 116
                         source: MediaGen.srcPath === "" ? "" : !MediaGen.srcIsVideo() ? "file://" + MediaGen.srcPath
                             : MediaGen.itemForPath(MediaGen.srcPath) ? MediaGen.thumbUrl(MediaGen.itemForPath(MediaGen.srcPath).id) : "" }
             }
             ColumnLayout {
-                visible: !MediaGen.refs.length
+                visible: !root.showRefs
                 Layout.fillWidth: true; spacing: 0
                 StyledText { Layout.fillWidth: true; elide: Text.ElideMiddle; text: (MediaGen.srcIsVideo() ? "Video · " : "Photo 1 · ") + MediaGen.srcPath.split("/").pop(); font.pixelSize: Appearance.font.pixelSize.smallie }
                 StyledText { text: C.ROLE[MediaGen.mode()] ?? ""; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
             }
             // Numbered slots, so prompts can say "photo 2" and mean exactly this image.
             Repeater {
-                model: MediaGen.refs.length ? [MediaGen.srcPath].concat(MediaGen.refs) : []
+                model: root.showRefs ? [MediaGen.srcPath].concat(MediaGen.refs) : []
                 delegate: ColumnLayout {
                     required property string modelData
                     required property int index
                     spacing: 2
                     Rectangle {
                         Layout.preferredWidth: 46; Layout.preferredHeight: 34; radius: Appearance.rounding.verysmall; clip: true; color: Appearance.colors.colLayer1
-                        Image { anchors.fill: parent; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 92; source: "file://" + modelData }
+                        Image { anchors.fill: parent; fillMode: Image.PreserveAspectCrop; asynchronous: true; autoTransform: true; sourceSize.width: 92; source: "file://" + modelData }
                         HoverHandler { id: slotHover }
                         RippleButton {
                             visible: slotHover.hovered && !MediaGen.busy
@@ -83,13 +85,15 @@ Item {
                             colBackground: Appearance.colors.colLayer2
                             onClicked: MediaGen.removeImage(index)
                             contentItem: MaterialSymbol { anchors.centerIn: parent; text: "close"; iconSize: Appearance.font.pixelSize.small; color: Appearance.colors.colOnLayer1 }
+                            StyledToolTip { text: "Remove photo " + (index + 1) }
                         }
                     }
                     StyledText { Layout.alignment: Qt.AlignHCenter; text: "Photo " + (index + 1); color: index === 0 ? Appearance.colors.colOnLayer1 : Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
                 }
             }
-            Item { visible: MediaGen.refs.length > 0; Layout.fillWidth: true }
+            Item { visible: root.showRefs; Layout.fillWidth: true }
             RippleButton {
+                visible: !MediaGen.srcIsVideo()   // Studio edits images only
                 implicitWidth: 30; implicitHeight: 30; buttonRadius: Appearance.rounding.full
                 onClicked: {
                     const item = MediaGen.items.find(i => i.path === MediaGen.srcPath);

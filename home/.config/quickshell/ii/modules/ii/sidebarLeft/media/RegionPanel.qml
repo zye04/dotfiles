@@ -104,7 +104,7 @@ ColumnLayout {
                             visible: card.needsPrompt
                             Layout.fillWidth: true; wrapMode: Text.Wrap
                             text: "Describe this area"
-                            color: Appearance.m3colors.m3error; font.pixelSize: Appearance.font.pixelSize.small
+                            color: Appearance.colors.colError; font.pixelSize: Appearance.font.pixelSize.small
                         }
                         StyledText {
                             visible: card.large
@@ -143,13 +143,13 @@ ColumnLayout {
             StyledText {
                 visible: canvas.pendingSeeds > 0 || canvas.seedError !== ""
                 text: canvas.seedError || "Loading saved areas…"
-                color: canvas.seedError ? Appearance.m3colors.m3error : Appearance.colors.colSubtext
+                color: canvas.seedError ? Appearance.colors.colError : Appearance.colors.colSubtext
                 wrapMode: Text.Wrap; Layout.fillWidth: true
             }
             StyledText {
                 visible: MediaGen.lastError !== ""
                 text: MediaGen.lastError
-                color: Appearance.m3colors.m3error; wrapMode: Text.Wrap; Layout.fillWidth: true
+                color: Appearance.colors.colError; wrapMode: Text.Wrap; Layout.fillWidth: true
             }
             StyledText {
                 visible: win.confirmCancel

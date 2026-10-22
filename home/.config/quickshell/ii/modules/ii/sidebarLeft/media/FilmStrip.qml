@@ -12,8 +12,11 @@ ListView {
     spacing: 8
     clip: true
     boundsBehavior: Flickable.StopAtBounds
+    // Keep the selected tile in view (arrow keys in the viewer, a new result).
+    Connections { target: MediaGen; function onSelectedIdChanged() { const i = MediaGen.items.findIndex(x => x.id === MediaGen.selectedId); if (i >= 0) root.positionViewAtIndex(i, ListView.Contain); } }
     header: Item {
-        width: MediaGen.busy ? 100 : 0; height: 58; visible: MediaGen.busy
+        width: MediaGen.busy ? 100 : 0; height: 58; visible: width > 0; clip: true
+        Behavior on width { animation: Appearance.animation.elementMove.numberAnimation.createObject(this) }
         Rectangle { width: 92; height: 58; radius: Appearance.rounding.small; color: Appearance.colors.colLayer1
             MaterialLoadingIndicator { anchors.centerIn: parent; implicitSize: Appearance.font.pixelSize.hugeass; loading: MediaGen.busy } }
     }
@@ -27,6 +30,7 @@ ListView {
         colRipple: Appearance.colors.colLayer1Active
         onClicked: MediaGen.selectedId = modelData.id
         contentItem: Item {}
+        StyledToolTip { text: (tile.modelData.spec?.prompt || tile.modelData.id).slice(0, 120) }
         Rectangle {
             anchors { fill: parent; margins: 2 }
             id: thumbBox

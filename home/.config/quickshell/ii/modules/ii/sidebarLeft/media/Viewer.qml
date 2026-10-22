@@ -27,6 +27,7 @@ ColumnLayout {
 
         Image {
             id: preview
+            autoTransform: true
             anchors.fill: parent; fillMode: Image.PreserveAspectFit; asynchronous: true
             visible: !!root.item && !root.isVideo
             source: root.item && !root.isVideo ? "file://" + root.item.path : ""
@@ -47,7 +48,7 @@ ColumnLayout {
             anchors.centerIn: parent; visible: !root.item; spacing: 10
             MaterialSymbol { Layout.alignment: Qt.AlignHCenter; text: "photo_library"; iconSize: Appearance.font.pixelSize.hugeass; color: Appearance.colors.colOutlineVariant }
             StyledText { Layout.alignment: Qt.AlignHCenter; text: "Nothing here yet"; color: Appearance.colors.colOnLayer1 }
-            StyledText { Layout.alignment: Qt.AlignHCenter; text: "Results land here and in ~/agent/images"; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
+            StyledText { Layout.alignment: Qt.AlignHCenter; text: "Results land here · images in ~/agent/images, videos in ~/agent/videos"; color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller }
         }
 
         MaterialLoadingIndicator {
@@ -79,7 +80,7 @@ ColumnLayout {
             Behavior on opacity { animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this) }
 
             RowLayout { anchors { top: parent.top; right: parent.right } spacing: 6
-                Glass { glyph: "compare"; visible: root.compareSrc !== ""; StyledToolTip { text: "Compare with source" }
+                Glass { glyph: "compare"; visible: root.compareSrc !== ""; StyledToolTip { text: "Hold to compare with the source" }
                         downAction: () => compareImg.visible = true; releaseAction: () => compareImg.visible = false }
                 Glass { glyph: "open_in_full"; StyledToolTip { text: "Open full screen" }
                         onClicked: Quickshell.execDetached(["mpv", "--fullscreen", "--image-display-duration=inf", "--loop-file=inf", root.item.path]) }
@@ -90,11 +91,11 @@ ColumnLayout {
                 Glass { visible: !root.isVideo; glyph: "brush"; label: "Region"; onClicked: MediaGen.openRegionEditor(root.item.path, null)
                         StyledToolTip { text: "Change only a painted area" } }
                 Glass { visible: !root.isVideo; glyph: "movie"; label: "Animate"; onClicked: root.act("video")
-                        StyledToolTip { text: "Turn this image into a 5 s video" } }
+                        StyledToolTip { text: "Turn this image into a " + Math.round((MediaGen.presets?.video?.frames ?? 81) / (MediaGen.presets?.video?.fps ?? 16)) + " s video" } }
                 Glass { visible: root.isVideo; glyph: "slow_motion_video"; label: "Interpolate"; onClicked: root.act("interp")
                         StyledToolTip { text: "Smoother motion: adds frames between frames (FILM)" } }
             }
-            Glass { anchors { right: parent.right; bottom: parent.bottom } glyph: "more_horiz"; onClicked: menu.popup() }
+            Glass { anchors { right: parent.right; bottom: parent.bottom } glyph: "more_horiz"; onClicked: menu.popup(); StyledToolTip { text: "More" } }
             Rectangle {   // video player bar
                 visible: root.isVideo
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom; bottomMargin: 46 }
@@ -105,16 +106,17 @@ ColumnLayout {
                     anchors { fill: parent; margins: 3; rightMargin: 6 }
                     spacing: 10
                     Glass { glyph: player.playbackState === MediaPlayer.PlayingState ? "pause" : "play_arrow"
-                        onClicked: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play() }
+                        onClicked: player.playbackState === MediaPlayer.PlayingState ? player.pause() : player.play()
+                        StyledToolTip { text: player.playbackState === MediaPlayer.PlayingState ? "Pause" : "Play" } }
                     StyledSlider { Layout.fillWidth: true; from: 0; to: Math.max(1, player.duration); value: player.position; onMoved: player.position = value }
                     StyledText { color: Appearance.m3colors.m3onSurface; font.pixelSize: Appearance.font.pixelSize.smaller
                         function t(ms) { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
                         text: t(player.position) + " / " + t(player.duration) }
-                    Glass { glyph: audio.muted ? "volume_off" : "volume_up"; onClicked: audio.muted = !audio.muted }
+                    Glass { glyph: audio.muted ? "volume_off" : "volume_up"; onClicked: audio.muted = !audio.muted; StyledToolTip { text: audio.muted ? "Unmute" : "Mute" } }
                 }
             }
         }
-        Image { id: compareImg; anchors.fill: parent; visible: false; fillMode: Image.PreserveAspectFit; source: root.compareSrc }
+        Image { id: compareImg; anchors.fill: parent; visible: false; fillMode: Image.PreserveAspectFit; autoTransform: true; source: root.compareSrc }
 
         component Entry: MenuItem {
             id: mi
@@ -140,7 +142,7 @@ ColumnLayout {
                 border.width: 1; border.color: Appearance.colors.colOutlineVariant
             }
             Entry { visible: !root.isVideo; text: "Open in Studio"; onTriggered: Quickshell.execDetached(["xdg-open", MediaGen.base + "/studio/?item=" + encodeURIComponent(root.item.id)]) }
-            Entry { enabled: !MediaGen.busy && (!root.isVideo || root.item?.spec?.mode === "i2v"); text: "Reuse prompt and settings"; onTriggered: MediaGen.reuse(root.item) }
+            Entry { enabled: !MediaGen.busy; text: "Reuse prompt and settings"; onTriggered: MediaGen.reuse(root.item) }
             Entry { text: "Copy prompt"; onTriggered: Quickshell.clipboardText = root.item.spec?.prompt ?? "" }
             Entry { text: "Show in folder"; onTriggered: Quickshell.execDetached(["dolphin", "--select", root.item.path]) }
             MenuSeparator {
@@ -181,8 +183,10 @@ ColumnLayout {
         StyledText { Layout.fillWidth: true; elide: Text.ElideRight; text: root.item?.spec?.prompt ?? ""; color: Appearance.colors.colOnLayer1; font.pixelSize: Appearance.font.pixelSize.smaller }
         StyledText {
             color: Appearance.colors.colSubtext; font.pixelSize: Appearance.font.pixelSize.smaller
-            text: root.item ? root.item.w + "×" + root.item.h + " · " + (root.item.quality ? root.item.quality.charAt(0).toUpperCase() + root.item.quality.slice(1) : "") + " · "
-                + (root.isVideo ? Math.round(root.item.duration_s ?? 0) + " s clip" : Math.round(root.item.elapsed_s ?? 0) + " s") : ""
+            // Quality only means something for generations; upscale and interpolate carry the form's leftover value.
+            readonly property string q: ["t2i", "edit", "region", "i2v", "pose"].includes(root.item?.spec?.mode) && root.item?.quality ? root.item.quality.charAt(0).toUpperCase() + root.item.quality.slice(1) : ""
+            text: root.item ? [root.item.w + "×" + root.item.h, q, root.isVideo ? Math.round(root.item.duration_s ?? 0) + " s clip" : "",
+                               "made in " + Math.round(root.item.elapsed_s ?? 0) + " s"].filter(s => s !== "").join(" · ") : ""
         }
     }
 }

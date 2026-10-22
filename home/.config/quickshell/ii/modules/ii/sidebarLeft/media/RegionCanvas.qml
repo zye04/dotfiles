@@ -217,7 +217,8 @@ Item {
             regions: regions.map((r, i) => ({ strokes: r.strokes.length, box: r.box, boxLocked: r.boxLocked, bbox: bbox(i), seed: r.seed })) });
     }
 
-    Image { id: img; source: root.source ? "file://" + root.source : ""; visible: false; asynchronous: false }
+    // autoTransform: draw on phone photos upright, matching the upright copy the service edits (spec._upright).
+    Image { id: img; source: root.source ? "file://" + root.source : ""; visible: false; asynchronous: false; autoTransform: true }
 
     MouseArea {
         id: mouseArea
@@ -337,7 +338,7 @@ Item {
         x: (root.width - root.imgW * scale) / 2 + root.pan.x
         y: (root.height - root.imgH * scale) / 2 + root.pan.y
 
-        Image { anchors.fill: parent; source: img.source; smooth: true; mipmap: true }
+        Image { anchors.fill: parent; source: img.source; smooth: true; mipmap: true; autoTransform: true }
 
         Repeater {
             id: layers

@@ -45,6 +45,17 @@ Singleton {
     onPromptChanged: { draftNotice = ""; if (!_applying && pendingDraft) { draftAppliedId = pendingDraft.id; pendingDraft = null; } }
     onBusyChanged: applyPendingDraft()
     onRegionPathChanged: applyPendingDraft()
+    // Steps and prompt strength mean different things for images and video: drop the overrides when the family changes.
+    property string _family: "image"
+    function family(m) { return m === "i2v" ? "video" : ["t2i", "edit", "region"].includes(m) ? "image" : _family; }
+    function _checkFamily() {
+        const f = family(curMode());
+        if (f !== _family) { _family = f; if (adv.steps !== null || adv.cfg !== null) adv = Object.assign({}, adv, { steps: null, cfg: null }); }
+    }
+    onSrcPathChanged: _checkFamily()
+    onTaskChanged: _checkFamily()
+    onLastErrorChanged: if (lastError !== "") errorClear.restart()
+    property Timer errorClear: Timer { interval: 8000; onTriggered: root.lastError = "" }
 
     function srcIsVideo() { return /\.mp4$/i.test(srcPath); }
     function mode() { return srcPath === "" ? "t2i" : srcIsVideo() ? (task === "upscale" ? "upscale" : "interp") : ({ upscale: "upscale", video: "i2v" })[task] ?? "edit"; }
@@ -52,8 +63,8 @@ Singleton {
     function role(m) { return m === "i2v" ? "video" : "image"; }
     function presetValue(key) {
         if (!presets) return null;
-        if (mode() === "i2v") return key === "steps" ? presets.video[quality].steps : presets.video[quality].cfg_hi;
-        return key === "steps" ? presets.image[quality].steps : presets.image.cfg;
+        if (curMode() === "i2v") return key === "steps" ? presets.video[quality].steps : presets.video[quality].cfg_hi;
+        return key === "steps" ? presets.image[quality].steps : curMode() === "t2i" ? presets.image.t2i_cfg?.[quality] ?? presets.image.cfg : presets.image.cfg;
     }
     function itemForPath(path) { return items.find(i => i.path === path) ?? null; }
     // Only a generated Wan clip has a known frame rate.
@@ -61,15 +72,17 @@ Singleton {
     function qualityHint(q) {
         const e = presets?.estimates_s;
         if (!e) return "";
-        return mode() === "i2v" ? fmtDuration(e.video[q]) : "~" + e.image[q] + " s";
+        return mode() === "i2v" ? fmtDuration(e.video[q]) : mode() === "t2i" ? "~" + e.image[q] + " s" : mode() === "edit" && e.image.edit_q ? "~" + e.image.edit_q[q] + " s" : "";
     }
     function selectedItem() { return items.find(i => i.id === selectedId) ?? (items.length ? items[0] : null); }
-    function estimateS() {
+    // Same as the service's estimate, including ~15 s to start ComfyUI when it isn't loaded.
+    function estimateS() { const s = _estimate(); return s > 0 ? s + (state.comfy_loaded ? 0 : 15) : 0; }
+    function _estimate() {
         if (!presets) return 0;
         const e = presets.estimates_s, m = mode();
         if (m === "interp") return e.interp?.[factor] ?? 0;
         if (m === "upscale" && srcIsVideo()) return e.video_upscale?.[String(scale)] ?? 0;
-        return m === "i2v" ? e.video[quality] : m === "t2i" ? e.image[quality] : e.image[m];
+        return m === "i2v" ? e.video[quality] : m === "t2i" ? e.image[quality] : m === "edit" ? e.image.edit_q?.[quality] ?? e.image.edit : e.image[m];
     }
     function fmtDuration(s) {
         if (s < 60) return "~" + Math.max(1, Math.round(s)) + " s";
@@ -86,6 +99,7 @@ Singleton {
         const ov = presets?.models ? adv.models ?? {} : {};
         const lo = loraOverrides(m);
         const a = Object.assign({}, adv); delete a.models; delete a.loras;
+        if (!["t2i", "edit", "i2v"].includes(m)) { a.steps = null; a.cfg = null; }
         if (Object.keys(ov).length) a.models = ov;
         if (Object.keys(lo).length) a.loras = lo;
         s.advanced = a;
@@ -120,8 +134,11 @@ Singleton {
         const meta = presets?.models?.[role(m)]?.options?.[modelKey(role(m))]?.loras ?? {};
         return Object.keys(meta).filter(k => !meta[k].modes || meta[k].modes.includes(m));
     }
-    // Video: the quality preset sets the speed LoRA's strength, over the LoRA's own default.
-    function loraDefault(key) { return (curMode() === "i2v" ? presets?.video?.[quality]?.loras?.[key] : undefined) ?? loraMeta(key)?.default_strength; }
+    // Video: the quality preset sets the speed LoRA; region: its own defaults (consistency off). Both over the LoRA's default.
+    function loraDefault(key) {
+        const m = curMode();
+        return (m === "i2v" ? presets?.video?.[quality]?.loras?.[key] : m === "region" ? presets?.region?.loras?.[key] : undefined) ?? loraMeta(key)?.default_strength;
+    }
     function loraValue(key) { return adv.loras?.[key] ?? loraDefault(key) ?? 1; }
     function setLora(key, v) {
         const o = Object.assign({}, adv.loras ?? {}), r = Math.round(v * 20) / 20;
@@ -139,22 +156,26 @@ Singleton {
     // User-added images: the first becomes the source, later ones become references.
     function addImage(path) {
         if (path === srcPath || refs.includes(path)) return;
+        if (srcIsVideo()) { setSource(path); return; }   // a video takes no reference images
         if (srcPath !== "") {
             if (refs.length < 3) refs = refs.concat([path]); else lastError = "Up to 3 reference images";
         } else setSource(path);
     }
+    // Source and task first: LoRA defaults depend on the mode they produce.
     function reuse(item) {
         const sp = item.spec ?? {};
-        prompt = sp.prompt ?? ""; quality = item.quality ?? quality;
-        if (sp.shape) shape = sp.shape;
-        adv = { steps: sp.advanced?.steps ?? null, cfg: sp.advanced?.cfg ?? null, seed: item.seed ?? null, models: {}, loras: {} };
-        for (const [role, key] of Object.entries(sp.advanced?.models ?? {})) setModel(role, key);
-        for (const [k, v] of Object.entries(sp.advanced?.loras ?? {})) setLora(k, v);
         if (sp.source) setSource(sp.source); else clearSource();
         refs = (sp.refs ?? []).slice();
-        if (sp.mode === "region") { openRegionEditor(sp.source, sp.regions); return; }
-        task = sp.mode === "upscale" ? "upscale" : sp.mode === "i2v" ? "video" : "edit";
+        task = sp.mode === "upscale" ? "upscale" : sp.mode === "i2v" ? "video" : sp.mode === "interp" ? "interp" : "edit";
         if (sp.scale) scale = sp.scale;
+        if (sp.factor) factor = sp.factor;
+        prompt = sp.prompt ?? ""; quality = item.quality ?? quality;
+        if (sp.shape) shape = sp.shape;
+        _family = family(sp.mode === "region" ? "region" : mode());
+        adv = { steps: sp.advanced?.steps ?? null, cfg: sp.advanced?.cfg ?? null, seed: item.seed ?? null, models: {}, loras: {} };
+        for (const [role, key] of Object.entries(sp.advanced?.models ?? {})) setModel(role, key);
+        if (sp.mode === "region") { openRegionEditor(sp.source, sp.regions); }
+        for (const [k, v] of Object.entries(sp.advanced?.loras ?? {})) setLora(k, v);
     }
     function considerDraft() {
         const d = state.draft;
@@ -168,16 +189,19 @@ Singleton {
         pendingDraft = null;
         if (Date.now() / 1000 - d.at >= 600) return;
         draftAppliedId = d.id;
+        // Mode and source first (LoRA defaults depend on the mode); a draft that needs an image drops a video source.
+        if (d.mode === "t2i") { if (d.source == null) clearSource(); }
+        else if (d.mode === "edit" || d.mode === "upscale" || d.mode === "i2v") {
+            if (d.source != null) setSource(d.source); else if (srcIsVideo() && d.mode !== "upscale") clearSource();
+            task = d.mode === "i2v" ? "video" : d.mode;
+        }
+        else if (d.mode === "interp") { if (d.source != null) setSource(d.source); task = "interp"; if (d.factor != null) factor = d.factor; }
         if (d.prompt) { _applying = true; prompt = d.prompt; _applying = false; }
         if (d.quality != null && presets?.image?.[d.quality]) quality = d.quality;
         if (d.shape != null) shape = d.shape;
         if (d.model != null && presets?.models?.[role(d.mode)]?.options?.[d.model]) setModel(role(d.mode), d.model);
         for (const [k, v] of Object.entries(d.loras ?? {})) setLora(k, v);
         if (d.seed != null) adv = Object.assign({}, adv, { seed: d.seed });
-        if (d.mode === "t2i") { if (d.source == null) clearSource(); }
-        else if (d.mode === "edit" || d.mode === "upscale") { if (d.source != null) setSource(d.source); task = d.mode; }
-        else if (d.mode === "i2v") { if (d.source != null) setSource(d.source); task = "video"; }
-        else if (d.mode === "interp") { if (d.source != null) setSource(d.source); if (d.factor != null) factor = d.factor; }
         draftNotice = "Filled by the agent · " + Qt.formatTime(new Date(d.at * 1000), "HH:mm");
     }
     function thumbUrl(id) { return base + "/thumb/" + id; }
@@ -242,7 +266,11 @@ Singleton {
             if (st !== 202) { const e = d?.error; lastError = !e ? "Couldn't retry the job" : e === "busy" ? "A job is already running" : typeof e === "string" ? e : JSON.stringify(e); }
         });
     }
-    function deleteItem(id) { _request("DELETE", "/items/" + id, null, (st) => refreshItems()); }
+    function deleteItem(id) {
+        const path = items.find(i => i.id === id)?.path;
+        if (path && path === srcPath) clearSource(); else if (path) refs = refs.filter(r => r !== path);
+        _request("DELETE", "/items/" + id, null, (st) => refreshItems());
+    }
     function regionsDir() { return Quickshell.env("HOME") + "/.cache/local-suite/media/regions"; }
     function openRegionEditor(path, regions) { if (busy) return; lastError = ""; regionSeed = regions ?? null; regionPath = path; }
     function closeRegionEditor() { regionPath = ""; regionSeed = null; }
