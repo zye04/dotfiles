@@ -3,7 +3,7 @@ hl.on("hyprland.start", function ()
 
     -- Bar, wallpaper
     hl.exec_cmd("$HOME/.config/hypr/hyprland/scripts/start_geoclue_agent.sh")
-    hl.exec_cmd("qs -c $qsConfig")
+    hl.exec_cmd("env __NV_DISABLE_EXPLICIT_SYNC=1 qs -c $qsConfig") -- NVIDIA explicit sync leaks a sync_file fd per frame
     hl.exec_cmd("$HOME/.config/hypr/custom/scripts/__restore_video_wallpaper.sh")
 
     -- Core components (authentication, lock screen, notification daemon)
