@@ -47,7 +47,7 @@ Singleton {
     onRegionPathChanged: applyPendingDraft()
 
     function srcIsVideo() { return /\.mp4$/i.test(srcPath); }
-    function mode() { return srcPath === "" ? "t2i" : srcIsVideo() ? "interp" : ({ upscale: "upscale", video: "i2v" })[task] ?? "edit"; }
+    function mode() { return srcPath === "" ? "t2i" : srcIsVideo() ? (task === "upscale" ? "upscale" : "interp") : ({ upscale: "upscale", video: "i2v" })[task] ?? "edit"; }
     function curMode() { return regionEditor ? "region" : mode(); }
     function role(m) { return m === "i2v" ? "video" : "image"; }
     function presetValue(key) {
@@ -68,6 +68,7 @@ Singleton {
         if (!presets) return 0;
         const e = presets.estimates_s, m = mode();
         if (m === "interp") return e.interp?.[factor] ?? 0;
+        if (m === "upscale" && srcIsVideo()) return e.video_upscale?.[String(scale)] ?? 0;
         return m === "i2v" ? e.video[quality] : m === "t2i" ? e.image[quality] : e.image[m];
     }
     function fmtDuration(s) {

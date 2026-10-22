@@ -13,6 +13,6 @@ function appendSuggestion(text, word) {
     const t = text.replace(/[ ,.]*$/, "");
     return t.length ? t + ", " + word : word;
 }
-function buttonFor(mode) { return BUTTON[mode].slice(); }
+function buttonFor(mode, video) { return video && mode === "upscale" ? ["hd", "Upscale video"] : BUTTON[mode].slice(); }
 
 function mmss(s) { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }

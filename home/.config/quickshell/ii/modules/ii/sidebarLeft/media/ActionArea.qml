@@ -10,7 +10,7 @@ ColumnLayout {
     id: root
     readonly property string status: MediaGen.state.status ?? "idle"
     readonly property bool errorShown: status === "error" && (MediaGen.state.job?.id ?? "recovered") !== MediaGen.dismissedJobId
-    readonly property var btn: C.buttonFor(MediaGen.mode())
+    readonly property var btn: C.buttonFor(MediaGen.mode(), MediaGen.srcIsVideo())
     spacing: 8
 
     RowLayout {   // swap note

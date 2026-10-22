@@ -86,7 +86,7 @@ ColumnLayout {
             }
             RowLayout { enabled: !MediaGen.busy; anchors { left: parent.left; bottom: parent.bottom } spacing: 6
                 Glass { visible: !root.isVideo; glyph: "edit"; label: "Edit"; onClicked: root.act("edit") }
-                Glass { visible: !root.isVideo; glyph: "hd"; label: "Upscale"; onClicked: root.act("upscale") }
+                Glass { glyph: "hd"; label: "Upscale"; onClicked: root.act("upscale") }
                 Glass { visible: !root.isVideo; glyph: "brush"; label: "Region"; onClicked: MediaGen.openRegionEditor(root.item.path, null)
                         StyledToolTip { text: "Change only a painted area" } }
                 Glass { visible: !root.isVideo; glyph: "movie"; label: "Animate"; onClicked: root.act("video")
