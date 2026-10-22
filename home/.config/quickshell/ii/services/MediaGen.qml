@@ -198,6 +198,7 @@ Singleton {
             if (d.source != null) setSource(d.source); else if (srcIsVideo() && d.mode !== "upscale") clearSource();
             task = d.mode === "i2v" ? "video" : d.mode;
         }
+        if (d.mode === "i2v") clipLength = d.length ?? 5;
         else if (d.mode === "interp") { if (d.source != null) setSource(d.source); task = "interp"; if (d.factor != null) factor = d.factor; }
         if (d.prompt) { _applying = true; prompt = d.prompt; _applying = false; }
         if (d.quality != null && presets?.image?.[d.quality]) quality = d.quality;
