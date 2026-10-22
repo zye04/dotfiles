@@ -30,6 +30,7 @@ Singleton {
     property string quality: "realistic"
     property real scale: 2.0
     property int factor: 2
+    property int clipLength: 5             // i2v seconds; above 5 the service chains SVI chunks
     property var adv: ({ steps: null, cfg: null, seed: null, models: ({}), loras: ({}) })
     property string selectedId: ""
     property string regionPath: ""
@@ -72,7 +73,7 @@ Singleton {
     function qualityHint(q) {
         const e = presets?.estimates_s;
         if (!e) return "";
-        return mode() === "i2v" ? fmtDuration(e.video[q]) : mode() === "t2i" ? "~" + e.image[q] + " s" : mode() === "edit" && e.image.edit_q ? "~" + e.image.edit_q[q] + " s" : "";
+        return mode() === "i2v" ? fmtDuration(e.video[q] * clipLength / 5) : mode() === "t2i" ? "~" + e.image[q] + " s" : mode() === "edit" && e.image.edit_q ? "~" + e.image.edit_q[q] + " s" : "";
     }
     function selectedItem() { return items.find(i => i.id === selectedId) ?? (items.length ? items[0] : null); }
     // Same as the service's estimate, including ~15 s to start ComfyUI when it isn't loaded.
@@ -82,7 +83,7 @@ Singleton {
         const e = presets.estimates_s, m = mode();
         if (m === "interp") return e.interp?.[factor] ?? 0;
         if (m === "upscale" && srcIsVideo()) return e.video_upscale?.[String(scale)] ?? 0;
-        return m === "i2v" ? e.video[quality] : m === "t2i" ? e.image[quality] : m === "edit" ? e.image.edit_q?.[quality] ?? e.image.edit : e.image[m];
+        return m === "i2v" ? e.video[quality] * clipLength / 5 : m === "t2i" ? e.image[quality] : m === "edit" ? e.image.edit_q?.[quality] ?? e.image.edit : e.image[m];
     }
     function fmtDuration(s) {
         if (s < 60) return "~" + Math.max(1, Math.round(s)) + " s";
@@ -107,6 +108,7 @@ Singleton {
         if (m === "edit" && refs.length) s.refs = refs;
         if (m === "upscale") s.scale = scale;
         if (m === "interp") s.factor = factor;
+        if (m === "i2v") s.length = clipLength;
         return s;
     }
     function modelRoles() {
@@ -169,6 +171,7 @@ Singleton {
         task = sp.mode === "upscale" ? "upscale" : sp.mode === "i2v" ? "video" : sp.mode === "interp" ? "interp" : "edit";
         if (sp.scale) scale = sp.scale;
         if (sp.factor) factor = sp.factor;
+        clipLength = sp.length ?? 5;
         prompt = sp.prompt ?? ""; quality = item.quality ?? quality;
         if (sp.shape) shape = sp.shape;
         _family = family(sp.mode === "region" ? "region" : mode());
